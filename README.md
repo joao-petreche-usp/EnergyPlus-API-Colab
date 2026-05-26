@@ -75,8 +75,8 @@ Raw JSON: [`_GCP_VM_VERSION/data/sobol_exact.json`](_GCP_VM_VERSION/data/sobol_e
 
 Four non-dominated solutions recovered by sequential block-propagation (64 sims = 33% of exhaustive 192). All four match the exhaustive ground truth exactly — **100% Pareto effectiveness**, 0 solutions missed.
 
-| Design | Setpoint (°C) | Orientation | wall_R (m²K/W) | roof_R (m²K/W) | FR1 proxy | FR2 — Total Energy (kWh/yr) |
-|--------|--------------|-------------|----------------|----------------|-----------|------------------------------|
+| Design | Setpoint (°C) | Orientation | wall_R (m²K/W) | roof_R (m²K/W) | FR₁ max. air temp. (°C) | FR₂ — Total Energy (kWh/yr) |
+|--------|--------------|-------------|----------------|----------------|--------------------------|------------------------------|
 | P1 | 23 | North | 2.5 | 4.0 | 21.63 | 62,136 |
 | P2 | 24 | North | 2.5 | 4.0 | 22.18 | 61,728 |
 | P3 | 25 | North | 2.5 | 4.0 | 22.72 | 61,258 |
@@ -104,7 +104,7 @@ This path does *not* reproduce the Pareto front — it only demonstrates the Ene
 
 ```text
 ├── _GCP_VM_VERSION/                  # ★ Canonical pipeline (paper reproduction)
-│   ├── run_simulation.py             # ★ CLI: validate / single / gsa / pareto / exhaustive / calibrate
+│   ├── run_simulation.py             # ★ CLI: validate / single / gsa / pareto / pareto-sequential / exhaustive / calibrate
 │   ├── config/
 │   │   ├── setup_gcp_env.sh          # ★ One-shot VM bootstrap
 │   │   └── requirements/             # Layered deps: base / research / billing / design / dev
@@ -113,8 +113,8 @@ This path does *not* reproduce the Pareto front — it only demonstrates the Ene
 │   │   ├── USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw  # Chicago TMY3 weather
 │   │   ├── sobol_exact.json          # ★ Sobol exact GSA (192 sims, 4 DPs)
 │   │   ├── reference_results.json    # ★ Canonical Pareto front (4 designs, 64 sims)
-│   │   ├── proxy_coefficients.json   # CP-SAT Variant A — regression coefficients
-│   │   └── marginal_tables.json      # CP-SAT Variant B — marginal contribution tables
+│   │   ├── proxy_coefficients.json   # CP-SAT Variant A — regression coefficients (regenerate via --mode calibrate)
+│   │   └── marginal_tables.json      # CP-SAT Variant B — marginal contribution tables (regenerate via --mode calibrate)
 │   ├── docs/                         # Deployment + contributor guides
 │   ├── scripts/                      # build_proxies.py, dashboard.py, reprocess_gsa.py
 │   ├── src/                          # Shared library (config + IDF patcher)
