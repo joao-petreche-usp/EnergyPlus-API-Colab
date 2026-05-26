@@ -1,6 +1,6 @@
 # Hierarchical and Sequential Multi-Objective Optimization of Buildings
 
-Reproducibility companion for the paper *Hierarchical and Sequential Multi-Objective Optimization of Buildings: Implementing Axiomatic Design via Google OR-Tools and EnergyPlus Python API* (Petreche, USP). The repository ships the pipeline that produced the published Pareto front: Global Sensitivity Analysis (Morris) → CP-SAT lexicographic optimization → EnergyPlus simulation, all driven by a single CLI.
+Reproducibility companion for the paper *Hierarchical and Sequential Multi-Objective Optimization of Buildings: Implementing Axiomatic Design via Google OR-Tools and EnergyPlus Python API* (Petreche, USP). The repository ships the pipeline that produced the published Pareto front: Sobol variance decomposition (192-simulation full factorial) → CP-SAT lexicographic optimization → EnergyPlus simulation, all driven by a single CLI.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![EnergyPlus](https://img.shields.io/badge/EnergyPlus-v25.1-orange.svg)](https://energyplus.net/)
@@ -20,7 +20,7 @@ The canonical environment is a Google Cloud Compute Engine VM running Ubuntu 22.
 gcloud compute instances create sim-test-vm `
   --zone=us-central1-a `
   --image-family=ubuntu-2204-lts --image-project=ubuntu-os-cloud `
-  --machine-type=e2-medium --boot-disk-size=30GB
+  --machine-type=e2-standard-8 --boot-disk-size=30GB
 
 gcloud compute instances stop sim-test-vm --zone=us-central1-a
 gcloud compute instances set-service-account sim-test-vm `
@@ -39,9 +39,9 @@ bash _GCP_VM_VERSION/config/setup_gcp_env.sh
 source _GCP_VM_VERSION/.venv/bin/activate
 
 # 3. Reproduce the paper pipeline
-python _GCP_VM_VERSION/run_simulation.py --mode validate   # ~14 s — sanity check
-python _GCP_VM_VERSION/run_simulation.py --mode gsa --n-morris 20   # ~45 min, use tmux
-python _GCP_VM_VERSION/run_simulation.py --mode pareto     # produces the published Pareto front
+python _GCP_VM_VERSION/run_simulation.py --mode validate              # ~14 s — sanity check
+python _GCP_VM_VERSION/run_simulation.py --mode exhaustive --quiet    # 192 sims — ground truth
+python _GCP_VM_VERSION/run_simulation.py --mode pareto-sequential --quiet  # 64 sims — Pareto front
 ```
 
 Stop the VM when done:
@@ -58,27 +58,31 @@ Full deployment notes: [`_GCP_VM_VERSION/docs/Deployment_Guide.md`](_GCP_VM_VERS
 
 Running the pipeline above on the bundled IDF (`5ZoneAirCooled_Opt.idf`) and Chicago TMY3 weather file should reproduce the following tables. They are the ground-truth artifacts a reviewer can compare against.
 
-### Global Sensitivity Analysis (Morris, 5 DPs, 90 simulations)
+### Global Sensitivity Analysis (Sobol exact, 4 DPs, 192 simulations)
 
-| Rank | Design Parameter | μ\* (importance) | σ (interactions) | Role in AD hierarchy |
-|------|------------------|------------------|------------------|----------------------|
-| 1 | `orientation` | 4548.9 | 6017.0 | Level 1 — fix first |
-| 2 | `wall_r`      | 2646.1 | 3854.3 | Level 2 |
-| 3 | `roof_r`      | 2548.6 | 3570.5 | Level 2 (coupled with `wall_r`) |
-| 4 | `setpoint`    | 2274.2 | 3654.7 | Level 3 |
-| 5 | `glass_u`     | 1906.4 | 3326.7 | Level 4 |
+Sobol total-order indices computed via ANOVA over the complete 4-DP full factorial (orient × setpoint × wall_R × roof_R, 192 simulations). The near-zero interaction terms (S_T − S₁ < 0.003) confirm the near-additive variance structure that validates exact Pareto recovery under block-propagation.
 
-Raw JSON: [`_GCP_VM_VERSION/data/gsa_results_20260518.json`](_GCP_VM_VERSION/data/gsa_results_20260518.json).
+| Rank | Design Parameter | S_T (total-order) | S₁ (first-order) | S_T − S₁ | AD block |
+|------|-----------------|-------------------|-------------------|-----------|----------|
+| 1 | `roof_R` | 0.5032 | 0.5009 | 0.0023 | Block 2 — envelope |
+| 2 | `wall_R` | 0.4589 | 0.4568 | 0.0021 | Block 2 — envelope |
+| 3 | `setpoint` | 0.0317 | 0.0311 | 0.0006 | Block 1 — comfort |
+| 4 | `orient` | 0.0090 | 0.0084 | 0.0006 | Block 1 — comfort |
 
-### MLT Pareto Front (two-level lexicographic, 48 simulations)
+Raw JSON: [`_GCP_VM_VERSION/data/sobol_exact.json`](_GCP_VM_VERSION/data/sobol_exact.json).
 
-| Candidate | Setpoint (°C) | Orientation | wall_r | roof_r | FR1 proxy | FR2 — HVAC Energy (kWh/yr) |
-|---|---|---|---|---|---|---|
-| MLT\_o0\_s23\_b65 | 23 | 0° (North) | 2.5 | 4.0 | 17.072 | 62,136 |
-| MLT\_o0\_s24\_b65 | 24 | 0° (North) | 2.5 | 4.0 | 17.616 | 61,728 |
-| MLT\_o0\_s25\_b65 | 25 | 0° (North) | 2.5 | 4.0 | 18.160 | 61,258 |
+### Sequential Block-Propagation Pareto Front (64 simulations, 100% effectiveness)
 
-Budget range b30→b65: 67,694 → 62,136 kWh/yr (8.2% envelope-driven variation). Raw JSON: [`_GCP_VM_VERSION/data/pareto_front.json`](_GCP_VM_VERSION/data/pareto_front.json).
+Four non-dominated solutions recovered by sequential block-propagation (64 sims = 33% of exhaustive 192). All four match the exhaustive ground truth exactly — **100% Pareto effectiveness**, 0 solutions missed.
+
+| Design | Setpoint (°C) | Orientation | wall_R (m²K/W) | roof_R (m²K/W) | FR1 proxy | FR2 — Total Energy (kWh/yr) |
+|--------|--------------|-------------|----------------|----------------|-----------|------------------------------|
+| P1 | 23 | North | 2.5 | 4.0 | 21.63 | 62,136 |
+| P2 | 24 | North | 2.5 | 4.0 | 22.18 | 61,728 |
+| P3 | 25 | North | 2.5 | 4.0 | 22.72 | 61,258 |
+| P4 | 26 | North | 2.5 | 4.0 | 23.26 | 60,886 |
+
+Pareto trade-off: 1.63 °C comfort vs. 1.25 MWh/yr energy over four setpoint levels. Maximum insulation (wall_R = 2.5, roof_R = 4.0) and North orientation dominate all four solutions — envelope optimisation is independent of the comfort/setpoint trade-off, validating the Axiomatic Design block decomposition. Canonical results in [`_GCP_VM_VERSION/data/reference_results.json`](_GCP_VM_VERSION/data/reference_results.json).
 
 ---
 
@@ -104,33 +108,33 @@ This path does *not* reproduce the Pareto front — it only demonstrates the Ene
 │   ├── config/
 │   │   ├── setup_gcp_env.sh          # ★ One-shot VM bootstrap
 │   │   └── requirements/             # Layered deps: base / research / billing / design / dev
-│   ├── data/                         # IDF, EPW, GSA results, Pareto front, proxy coefficients
+│   ├── data/
+│   │   ├── 5ZoneAirCooled_Opt.idf                        # Patched IDF model
+│   │   ├── USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw  # Chicago TMY3 weather
+│   │   ├── sobol_exact.json          # ★ Sobol exact GSA (192 sims, 4 DPs)
+│   │   ├── reference_results.json    # ★ Canonical Pareto front (4 designs, 64 sims)
+│   │   ├── proxy_coefficients.json   # CP-SAT Variant A — regression coefficients
+│   │   └── marginal_tables.json      # CP-SAT Variant B — marginal contribution tables
 │   ├── docs/                         # Deployment + contributor guides
-│   ├── scripts/                      # build_proxies.py, dashboard.py, reprocess_gsa.py, billing utils
+│   ├── scripts/                      # build_proxies.py, dashboard.py, reprocess_gsa.py
 │   ├── src/                          # Shared library (config + IDF patcher)
 │   ├── test/
 │   ├── Designer_Decision_Explorer.ipynb      # Post-result analysis notebook
-│   ├── EnergyPlus_API_GCP_VM.ipynb           # Reference notebook (legacy)
 │   └── VERSION_INFO.md
 ├── _COLAB_VS_CODE_VERSION/           # Browser-friendly demo (single simulation)
 │   ├── EnergyPlus_VS_Code_Colab.ipynb
 │   └── VERSION_INFO.md
-├── local-docs/                       # Local-only reference material (not tracked in git)
-│   ├── docs-claude/                  # Theory docs loaded as AI context
-│   ├── docs-zotero/                  # PDF library (key references)
-│   ├── docs-google/                  # GCP proposals, presentations, cost estimates
-│   └── docs-github/                  # GitHub tokens (local only)
 ├── LICENSE
 └── README.md
 ```
 
-> **Runtime outputs** (`output/`, `pareto_candidates.csv`, `criteria.csv`, `/tmp/energyplus_sim/`) and local files (`local-docs/`, `.venv/`, IDE settings) are excluded from version control via `.gitignore`. The shared GCS bucket `eplus-colab-cloud-data` (configurable) holds inputs under `models/` and `weather/` and receives results under `resultados/`.
+> **Runtime outputs** (`output/`, `pareto_candidates.csv`, `criteria.csv`, `/tmp/energyplus_sim/`) and local files (`.venv/`, IDE settings) are excluded from version control via `.gitignore`. The shared GCS bucket `eplus-colab-cloud-data` holds inputs under `models/` and `weather/` and receives results under `results/`.
 
 ---
 
 ## Method in One Paragraph
 
-The framework couples Axiomatic Design with Google OR-Tools CP-SAT. A Morris-method Global Sensitivity Analysis quantifies how the design parameters drive the functional requirements; the resulting μ\* ranking is mapped into a triangular AD matrix that defines the lexicographic optimization hierarchy. CP-SAT solves the discrete two-level model (envelope budget → setpoint), and each candidate is verified by an annual EnergyPlus simulation — building geometry is patched into the IDF, while HVAC setpoints are injected at runtime through the Exchange API. The full derivation, validation against an exhaustive ground truth, and discussion of the linearization variants are in the paper.
+The framework couples Axiomatic Design with Google OR-Tools CP-SAT. A Sobol variance decomposition — computed exactly via ANOVA over a 192-simulation full factorial — quantifies how the design parameters drive the functional requirements; the resulting S_T ranking is mapped into a triangular AD matrix that defines the lexicographic optimization hierarchy and block decomposition. CP-SAT solves the discrete two-block model (Block 1: orientation × setpoint; Block 2: wall insulation × roof insulation), and each candidate is verified by an annual EnergyPlus simulation — building geometry is patched into the IDF, while HVAC setpoints are injected at runtime through the Exchange API. Sequential block-propagation recovers 100% of the exhaustive Pareto front at 33% of the evaluation budget (64 vs. 192 simulations). The full derivation, validation against the exhaustive ground truth, and discussion of the CP-SAT linearization variants are in the paper.
 
 ---
 
