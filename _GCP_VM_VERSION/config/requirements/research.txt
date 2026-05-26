@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────
+# research.txt — complete pipeline: GSA + CP-SAT + visualization
+# Install on VM: pip install -r requirements/research.txt
+# ─────────────────────────────────────────────────────────────
+-r base.txt
+
+# Global Sensitivity Analysis (Morris / Sobol)
+SALib>=1.4.7
+
+# Lexicographic optimization (CP-SAT)
+ortools>=9.8.0
+
+# Pareto frontier analysis and visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scipy>=1.11.0
+
+# Graphs (lexicographic triangularization — future phase)
+networkx>=3.1

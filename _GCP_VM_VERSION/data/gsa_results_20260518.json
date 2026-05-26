@@ -1,0 +1,24 @@
+{
+  "mu_star": {
+    "wall_r": 2646.1132279999997,
+    "roof_r": 2548.613149999996,
+    "glass_u": 1906.3904139999984,
+    "orientation_idx": 4548.892527999997,
+    "setpoint": 2274.1684859999973
+  },
+  "sigma": {
+    "wall_r": 3854.3220851637043,
+    "roof_r": 3570.509198974432,
+    "glass_u": 3326.7343930629245,
+    "orientation_idx": 6016.9825844160905,
+    "setpoint": 3654.717774691767
+  },
+  "ranking": [
+    "orientation_idx",
+    "wall_r",
+    "roof_r",
+    "setpoint",
+    "glass_u"
+  ],
+  "n_valid": 90
+}

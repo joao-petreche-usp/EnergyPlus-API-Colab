@@ -1,0 +1,28 @@
+{
+  "dp_order": [
+    "orient_idx",
+    "setpoint",
+    "wall_r",
+    "roof_r"
+  ],
+  "coefficients_kwh": {
+    "orient_idx": 79.0119891267504,
+    "setpoint": -794.7258904568807,
+    "wall_r": -3163.931152582357,
+    "roof_r": -2191.8204148381355
+  },
+  "intercept_kwh": 95533.79958661819,
+  "coefficients_int": {
+    "orient_idx": 7901,
+    "setpoint": -79473,
+    "wall_r": -316393,
+    "roof_r": -219182
+  },
+  "scale": 100,
+  "fit": {
+    "r2": 0.8955,
+    "mae_kwh": 816.25,
+    "heldout_mae_kwh": 753.76,
+    "n_samples": 71
+  }
+}
