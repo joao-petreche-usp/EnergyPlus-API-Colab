@@ -44,6 +44,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -619,6 +620,61 @@ def _pareto_filter(candidates: list[dict], f1: str, f2: str) -> list[dict]:
     return front
 
 
+def _hypervolume_2d(front: list[dict], ref_f1: float, ref_f2: float) -> float:
+    """Exact 2-D hypervolume indicator (minimisation). ref point must dominate all."""
+    pts = sorted(
+        [
+            (c["fr1_proxy"], c["hvac_energy_kwh"])
+            for c in front
+            if c.get("hvac_energy_kwh") is not None
+        ],
+        key=lambda x: x[0],
+    )
+    hv, prev_f2 = 0.0, ref_f2
+    for f1, f2 in pts:
+        hv += (ref_f1 - f1) * (prev_f2 - f2)
+        prev_f2 = f2
+    return hv
+
+
+def _benchmark_vs_exhaustive(p2: list[dict], ground_truth_path: Path) -> dict:
+    """M3.9: compare sequential Pareto front against exhaustive ground truth."""
+    data = json.loads(ground_truth_path.read_text())
+    ref_front = data.get("pareto_front", [])
+    ref_all = data.get("all_results", [])
+
+    # Exact design-point match via (orient_idx, setpoint, wall_r, roof_r)
+    p2_keys = {
+        (c["orient_idx"], int(c["setpoint"]), c["wall_r"], c["roof_r"])
+        for c in p2
+        if c.get("hvac_energy_kwh") is not None
+    }
+    matches = sum(
+        1
+        for r in ref_front
+        if (r["orient_idx"], int(r["setpoint"]), r["wall_r"], r["roof_r"]) in p2_keys
+    )
+
+    # Hypervolume — nadir reference from all 192 exhaustive results
+    valid_all = [r for r in ref_all if r.get("hvac_energy_kwh") is not None]
+    ref_f1 = max(r["fr1_proxy"] for r in valid_all) * 1.05
+    ref_f2 = max(r["hvac_energy_kwh"] for r in valid_all) * 1.05
+    hv_ref = _hypervolume_2d(ref_front, ref_f1, ref_f2)
+    hv_seq = _hypervolume_2d(p2, ref_f1, ref_f2)
+
+    return {
+        "n_exhaustive_pareto": len(ref_front),
+        "n_sequential_pareto": len(p2),
+        "n_matches": matches,
+        "effectiveness": round(matches / len(ref_front), 4) if ref_front else 0.0,
+        "effectiveness_pct": round(matches / len(ref_front) * 100, 1) if ref_front else 0.0,
+        "hv_exhaustive": round(hv_ref, 2),
+        "hv_sequential": round(hv_seq, 2),
+        "hv_ratio": round(hv_seq / hv_ref, 4) if hv_ref > 0 else 0.0,
+        "n_exhaustive_sims": 192,
+    }
+
+
 # ── Mode: exhaustive ──────────────────────────────────────────────────────────
 def mode_exhaustive(args, idf_path: Path, epw_path: Path) -> int:
     """
@@ -1024,7 +1080,261 @@ def mode_pareto(args, idf_path: Path, epw_path: Path) -> int:
     return 0
 
 
+# ── Mode: pareto-sequential ───────────────────────────────────────────────────
+def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
+    """
+    M3.8: Talami (2025) sequential block-propagation Pareto search.
+
+    Block 1 — Geometry/HVAC (orient × setpoint, 4×4 = 16 sims):
+        wall_r and roof_r are fixed at baseline. Extract Pareto front P1.
+
+    Block 2 — Envelope (wall_r × roof_r per P1 solution, |P1|×3×4 sims):
+        Only propagate the Pareto-optimal solutions from Block 1.
+        Extract global Pareto front P2.
+
+    M3.9 benchmark: compare P2 against the M3.7 exhaustive ground truth
+    (192 sims) and report effectiveness, hypervolume ratio, and sim reduction.
+    """
+    import itertools
+
+    log.info("=== MODE: pareto-sequential (M3.8 — Talami 2025) ===")
+
+    out = WORK_DIR / "pareto_sequential"
+    out.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # DP grids (same discrete values as mode_exhaustive)
+    orient_idxs = [0, 1, 2, 3]
+    setpoints    = [23.0, 24.0, 25.0, 26.0]
+    wall_rs      = [0.5, 1.5, 2.5]
+    roof_rs      = [1.0, 2.0, 3.0, 4.0]
+
+    # Baseline envelope values used while Block 1 sweeps geometry/HVAC.
+    # Both must be on the exhaustive grid so Block-1 (orient, setpoint) results
+    # share the same physical configuration as the corresponding slice of the
+    # M3.7 exhaustive grid — required for unbiased M3.9 effectiveness scoring.
+    WALL_R_BASE = 1.5   # ∈ wall_rs = [0.5, 1.5, 2.5] (median)
+    ROOF_R_BASE = 2.0   # ∈ roof_rs = [1.0, 2.0, 3.0, 4.0] (on-grid)
+
+    # ── Block 1: orient × setpoint (envelope fixed at baseline) ──────────────
+    log.info(f"\n  Block 1: {len(orient_idxs)}×{len(setpoints)} = "
+             f"{len(orient_idxs)*len(setpoints)} sims  "
+             f"(wall_r={WALL_R_BASE}, roof_r={ROOF_R_BASE} fixed)")
+
+    tasks_b1 = [
+        {
+            "key": f"seq_b1_o{o}_s{int(sp)}",
+            "idf_base": idf_path,
+            "epw_path": epw_path,
+            "output_dir": out,
+            "wall_r": WALL_R_BASE,
+            "roof_r": ROOF_R_BASE,
+            "orientation": ORIENTATION_MAP[o],
+            "setpoint": sp,
+            "candidate_id": f"seq_b1_o{o}_s{int(sp)}",
+            "quiet": args.quiet,
+            # extra fields for result assembly (not used by run_candidate)
+            "_orient_idx": o,
+        }
+        for o, sp in itertools.product(orient_idxs, setpoints)
+    ]
+
+    batch_b1 = run_batch(tasks_b1, args.workers, label="seq-block1", log_every=4)
+
+    results_b1 = []
+    for t in tasks_b1:
+        energy = batch_b1.get(t["key"])
+        results_b1.append(
+            {
+                "candidate_id": t["key"],
+                "orient_idx": t["_orient_idx"],
+                "orientation": t["orientation"],
+                "setpoint": t["setpoint"],
+                "wall_r": WALL_R_BASE,
+                "roof_r": ROOF_R_BASE,
+                "glass_u": GLASS_U_FIXED,
+                "fr1_proxy": _fr1_proxy(int(t["setpoint"]), int(GLASS_U_FIXED * 10)),
+                "fr2_proxy": _fr2_proxy(
+                    t["_orient_idx"], int(WALL_R_BASE * 10), int(ROOF_R_BASE * 10)
+                ),
+                "hvac_energy_kwh": energy,
+            }
+        )
+
+    valid_b1 = [c for c in results_b1 if c["hvac_energy_kwh"] is not None]
+    p1 = _pareto_filter(valid_b1, "fr1_proxy", "hvac_energy_kwh")
+    p1.sort(key=lambda c: c["fr1_proxy"])
+    log.info(f"  Block 1 valid: {len(valid_b1)}/{len(tasks_b1)}  |P1| = {len(p1)}")
+
+    # ── Block 2: wall_r × roof_r for each P1 solution ────────────────────────
+    n_b2 = len(p1) * len(wall_rs) * len(roof_rs)
+    log.info(f"\n  Block 2: |P1|={len(p1)} × {len(wall_rs)}×{len(roof_rs)} = {n_b2} sims")
+
+    tasks_b2 = [
+        {
+            "key": f"seq_b2_o{p['orient_idx']}_s{int(p['setpoint'])}"
+                   f"_w{int(wr*10)}_r{int(rr*10)}",
+            "idf_base": idf_path,
+            "epw_path": epw_path,
+            "output_dir": out,
+            "wall_r": wr,
+            "roof_r": rr,
+            "orientation": p["orientation"],
+            "setpoint": p["setpoint"],
+            "candidate_id": f"seq_b2_o{p['orient_idx']}_s{int(p['setpoint'])}"
+                            f"_w{int(wr*10)}_r{int(rr*10)}",
+            "quiet": args.quiet,
+            "_orient_idx": p["orient_idx"],
+        }
+        for p, wr, rr in itertools.product(p1, wall_rs, roof_rs)
+    ]
+
+    batch_b2 = run_batch(tasks_b2, args.workers, label="seq-block2", log_every=10)
+
+    results_b2 = []
+    for t in tasks_b2:
+        energy = batch_b2.get(t["key"])
+        results_b2.append(
+            {
+                "candidate_id": t["key"],
+                "orient_idx": t["_orient_idx"],
+                "orientation": t["orientation"],
+                "setpoint": t["setpoint"],
+                "wall_r": t["wall_r"],
+                "roof_r": t["roof_r"],
+                "glass_u": GLASS_U_FIXED,
+                "fr1_proxy": _fr1_proxy(int(t["setpoint"]), int(GLASS_U_FIXED * 10)),
+                "fr2_proxy": _fr2_proxy(
+                    t["_orient_idx"], int(t["wall_r"] * 10), int(t["roof_r"] * 10)
+                ),
+                "hvac_energy_kwh": energy,
+            }
+        )
+
+    valid_b2 = [c for c in results_b2 if c["hvac_energy_kwh"] is not None]
+    p2 = _pareto_filter(valid_b2, "fr1_proxy", "hvac_energy_kwh")
+    p2.sort(key=lambda c: c["fr1_proxy"])
+    log.info(f"  Block 2 valid: {len(valid_b2)}/{len(tasks_b2)}  |P2| = {len(p2)}")
+
+    n_total = len(tasks_b1) + len(tasks_b2)
+    log.info(f"\n  Total sims: {n_total}  (vs 192 exhaustive — "
+             f"{round((1 - n_total/192)*100, 1)}% reduction)")
+
+    # ── M3.9 Benchmark ────────────────────────────────────────────────────────
+    benchmark: dict = {}
+    gt_local = WORK_DIR / "exhaustive" / "exhaustive_pareto_ref.json"
+    if args.bucket and not args.no_gcs:
+        stage_in(args.bucket, args.ground_truth_gcs, gt_local)
+
+    if gt_local.exists():
+        benchmark = _benchmark_vs_exhaustive(p2, gt_local)
+        benchmark["n_sequential_total_sims"] = n_total
+        benchmark["sim_reduction_pct"] = round((1 - n_total / 192) * 100, 1)
+        log.info(
+            f"\n  === M3.9 Benchmark ===\n"
+            f"  Effectiveness : {benchmark['effectiveness_pct']}%"
+            f"  (target ≥ 95%)\n"
+            f"  HV ratio      : {benchmark['hv_ratio']}"
+            f"  (target ≥ 0.90)\n"
+            f"  Sims used     : {n_total} / 192"
+            f"  ({benchmark['sim_reduction_pct']}% reduction)"
+        )
+    else:
+        log.warning("  Ground-truth file not found — M3.9 benchmark skipped.")
+        log.warning(f"  Expected at: {gt_local}")
+
+    # ── Output ────────────────────────────────────────────────────────────────
+    out_data = {
+        "n_block1_sims": len(tasks_b1),
+        "n_block2_sims": len(tasks_b2),
+        "n_total_sims": n_total,
+        "n_p1": len(p1),
+        "n_p2": len(p2),
+        "block1_results": results_b1,
+        "block1_pareto": p1,
+        "block2_results": results_b2,
+        "pareto_front": p2,
+        "benchmark": benchmark,
+    }
+
+    results_path = out / f"pareto_sequential_{ts}.json"
+    results_path.write_text(json.dumps(out_data, indent=2))
+    log.info(f"\n  Results saved: {results_path}")
+
+    # Markdown summary (M3.9 report)
+    if benchmark:
+        md = (
+            f"# M3.9 Benchmark — Pareto Sequential vs Exhaustive\n\n"
+            f"**Run:** {ts}\n\n"
+            f"| Metric | Value | Target |\n"
+            f"|---|---|---|\n"
+            f"| Effectiveness | {benchmark['effectiveness_pct']}% | ≥ 95% |\n"
+            f"| HV ratio | {benchmark['hv_ratio']} | ≥ 0.90 |\n"
+            f"| Sequential sims | {n_total} | — |\n"
+            f"| Exhaustive sims | 192 | — |\n"
+            f"| Sim reduction | {benchmark['sim_reduction_pct']}% | — |\n"
+            f"| Matches (|P2∩P_ref|) | {benchmark['n_matches']} / "
+            f"{benchmark['n_exhaustive_pareto']} | — |\n\n"
+            f"## Pareto Front P2 ({len(p2)} points)\n\n"
+            f"| orient_idx | setpoint | wall_r | roof_r | FR1 proxy | HVAC energy (kWh) |\n"
+            f"|---|---|---|---|---|---|\n"
+        )
+        for c in p2:
+            md += (
+                f"| {c['orient_idx']} | {c['setpoint']} | {c['wall_r']} "
+                f"| {c['roof_r']} | {c['fr1_proxy']:.4f} "
+                f"| {c['hvac_energy_kwh']:.1f} |\n"
+            )
+        md_path = out / f"pareto_sequential_benchmark_{ts}.md"
+        md_path.write_text(md)
+        log.info(f"  Benchmark MD : {md_path}")
+
+    if args.bucket:
+        stage_out(args.bucket, out, f"results/gcp_vm_pareto_sequential_{ts}")
+
+    return 0
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+_BATCH_MODES = {"gsa", "pareto", "pareto-sequential", "exhaustive", "calibrate"}
+
+
+def _should_check_billing(args) -> bool:
+    """Resolve the auto-billing toggle: explicit flag wins; else default by mode."""
+    if args.check_billing is not None:
+        return args.check_billing
+    return args.mode in _BATCH_MODES
+
+
+def _run_billing_check(args) -> None:
+    """Invoke scripts/check_billing.py at the end of a successful batch run.
+
+    Non-fatal — logs warnings on failure but never raises. Skipped gracefully
+    when the script is absent (e.g. stale public-scope VMs that pre-date the
+    billing tooling).
+    """
+    script = Path(__file__).resolve().parent / "scripts" / "check_billing.py"
+    if not script.exists():
+        log.warning(f"  Billing check skipped: {script} not present on this VM")
+        return
+
+    log.info("\n=== Billing check (post-run snapshot) ===")
+    cmd = [sys.executable, "-u", str(script), "--today"]
+    if args.bucket and not args.no_gcs:
+        cmd.append("--stage-out")
+
+    try:
+        result = subprocess.run(cmd, timeout=120, check=False)
+        if result.returncode == 0:
+            log.info("  Billing snapshot OK")
+        else:
+            log.warning(f"  check_billing.py exited {result.returncode} (non-fatal)")
+    except subprocess.TimeoutExpired:
+        log.warning("  Billing check timed out after 120s (non-fatal)")
+    except Exception as e:
+        log.warning(f"  Billing check failed: {e} (non-fatal)")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="EnergyPlus GCP VM Standalone Runner",
@@ -1033,7 +1343,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["validate", "single", "gsa", "pareto", "exhaustive", "calibrate"],
+        choices=["validate", "single", "gsa", "pareto", "exhaustive", "calibrate", "pareto-sequential"],
         default="validate",
         help="Execution mode (default: validate)",
     )
@@ -1102,6 +1412,25 @@ def main() -> int:
         help="CP-SAT energy proxy (M3.3): regression (signed coefs) or marginal (tables)",
     )
 
+    # pareto-sequential mode (M3.8)
+    parser.add_argument(
+        "--ground-truth-gcs",
+        default="results/gcp_vm_exhaustive_20260521_132720/exhaustive_pareto.json",
+        help="GCS path to M3.7 exhaustive_pareto.json used for M3.9 benchmark "
+             "(default: the 192-sim run from 2026-05-21)",
+    )
+
+    # Auto-billing snapshot after batch runs
+    parser.add_argument(
+        "--check-billing",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="After a successful run, invoke scripts/check_billing.py --today and "
+             "stage the CSV to GCS. Default: ON for batch modes "
+             "(gsa/pareto/pareto-sequential/exhaustive/calibrate), OFF for "
+             "validate/single. Use --no-check-billing to disable.",
+    )
+
     args = parser.parse_args()
     if args.workers < 1:
         args.workers = 1
@@ -1141,8 +1470,14 @@ def main() -> int:
         "pareto": mode_pareto,
         "exhaustive": mode_exhaustive,
         "calibrate": mode_calibrate,
+        "pareto-sequential": mode_pareto_sequential,
     }
-    return dispatch[args.mode](args, idf_local, epw_local)
+    rc = dispatch[args.mode](args, idf_local, epw_local)
+
+    if rc == 0 and _should_check_billing(args):
+        _run_billing_check(args)
+
+    return rc
 
 
 if __name__ == "__main__":
