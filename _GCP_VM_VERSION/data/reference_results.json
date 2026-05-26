@@ -1,0 +1,168 @@
+{
+  "_comment": "M3.12 canonical snapshot of the Pareto-1 result for the paper. The 'winning' linearization variant is Sequential Talami (M3.8/M3.9), which recovered the entire M3.7 exhaustive Pareto front (4/4 matches, HV ratio = 1.0) at 64 / 192 sims. See plan/cpsat_validation_2026.md for the full M3.9 report.",
+  "winning_method": "pareto-sequential",
+  "winning_method_label": "Sequential Talami (Block 1: orient x setpoint, Block 2: wall_r x roof_r)",
+  "winning_run_timestamp_utc": "2026-05-25T17:32:24Z",
+  "winning_run_gcs_path": "gs://eplus-colab-cloud-data/results/gcp_vm_pareto_sequential_20260525_173224/",
+  "ground_truth_gcs_path": "gs://eplus-colab-cloud-data/results/gcp_vm_exhaustive_20260521_132720/exhaustive_pareto.json",
+  "metrics": {
+    "effectiveness_pct": 100.0,
+    "hv_ratio": 1.0,
+    "n_matches": 4,
+    "n_pareto_points": 4,
+    "n_simulations_used": 64,
+    "n_simulations_exhaustive": 192,
+    "computational_savings_pct": 66.7
+  },
+  "pareto_front": [
+    {
+      "orient_idx": 0,
+      "orientation_deg": 0.0,
+      "orientation_label": "N",
+      "setpoint_c": 23.0,
+      "wall_r_m2k_w": 2.5,
+      "roof_r_m2k_w": 4.0,
+      "glass_u_w_m2k": 2.0,
+      "fr1_proxy": 21.632,
+      "hvac_energy_kwh_yr": 62136.2,
+      "end_uses_kwh_yr": {
+        "heating_kwh_yr": 17891.67,
+        "cooling_kwh_yr": 5208.33,
+        "interior_lighting_kwh_yr": 22566.67,
+        "exterior_lighting_kwh_yr": 0.0,
+        "interior_equipment_kwh_yr": 13250.0,
+        "exterior_equipment_kwh_yr": 0.0,
+        "fans_kwh_yr": 2602.78,
+        "pumps_kwh_yr": 622.22,
+        "heat_rejection_kwh_yr": 0.0,
+        "humidification_kwh_yr": 0.0,
+        "heat_recovery_kwh_yr": 0.0,
+        "water_systems_kwh_yr": 0.0,
+        "refrigeration_kwh_yr": 0.0,
+        "generators_kwh_yr": 0.0,
+        "total_end_uses_kwh_yr": 62138.89
+      }
+    },
+    {
+      "orient_idx": 0,
+      "orientation_deg": 0.0,
+      "orientation_label": "N",
+      "setpoint_c": 24.0,
+      "wall_r_m2k_w": 2.5,
+      "roof_r_m2k_w": 4.0,
+      "glass_u_w_m2k": 2.0,
+      "fr1_proxy": 22.176,
+      "hvac_energy_kwh_yr": 61727.8,
+      "end_uses_kwh_yr": {
+        "heating_kwh_yr": 18438.89,
+        "cooling_kwh_yr": 4394.44,
+        "interior_lighting_kwh_yr": 22566.67,
+        "exterior_lighting_kwh_yr": 0.0,
+        "interior_equipment_kwh_yr": 13250.0,
+        "exterior_equipment_kwh_yr": 0.0,
+        "fans_kwh_yr": 2422.22,
+        "pumps_kwh_yr": 658.33,
+        "heat_rejection_kwh_yr": 0.0,
+        "humidification_kwh_yr": 0.0,
+        "heat_recovery_kwh_yr": 0.0,
+        "water_systems_kwh_yr": 0.0,
+        "refrigeration_kwh_yr": 0.0,
+        "generators_kwh_yr": 0.0,
+        "total_end_uses_kwh_yr": 61727.78
+      }
+    },
+    {
+      "orient_idx": 0,
+      "orientation_deg": 0.0,
+      "orientation_label": "N",
+      "setpoint_c": 25.0,
+      "wall_r_m2k_w": 2.5,
+      "roof_r_m2k_w": 4.0,
+      "glass_u_w_m2k": 2.0,
+      "fr1_proxy": 22.7199,
+      "hvac_energy_kwh_yr": 61258.4,
+      "end_uses_kwh_yr": {
+        "heating_kwh_yr": 18677.78,
+        "cooling_kwh_yr": 3738.89,
+        "interior_lighting_kwh_yr": 22566.67,
+        "exterior_lighting_kwh_yr": 0.0,
+        "interior_equipment_kwh_yr": 13250.0,
+        "exterior_equipment_kwh_yr": 0.0,
+        "fans_kwh_yr": 2344.44,
+        "pumps_kwh_yr": 683.33,
+        "heat_rejection_kwh_yr": 0.0,
+        "humidification_kwh_yr": 0.0,
+        "heat_recovery_kwh_yr": 0.0,
+        "water_systems_kwh_yr": 0.0,
+        "refrigeration_kwh_yr": 0.0,
+        "generators_kwh_yr": 0.0,
+        "total_end_uses_kwh_yr": 61258.33
+      }
+    },
+    {
+      "orient_idx": 0,
+      "orientation_deg": 0.0,
+      "orientation_label": "N",
+      "setpoint_c": 26.0,
+      "wall_r_m2k_w": 2.5,
+      "roof_r_m2k_w": 4.0,
+      "glass_u_w_m2k": 2.0,
+      "fr1_proxy": 23.2639,
+      "hvac_energy_kwh_yr": 60886.2,
+      "end_uses_kwh_yr": {
+        "heating_kwh_yr": 18758.33,
+        "cooling_kwh_yr": 3305.56,
+        "interior_lighting_kwh_yr": 22566.67,
+        "exterior_lighting_kwh_yr": 0.0,
+        "interior_equipment_kwh_yr": 13250.0,
+        "exterior_equipment_kwh_yr": 0.0,
+        "fans_kwh_yr": 2313.89,
+        "pumps_kwh_yr": 688.89,
+        "heat_rejection_kwh_yr": 0.0,
+        "humidification_kwh_yr": 0.0,
+        "heat_recovery_kwh_yr": 0.0,
+        "water_systems_kwh_yr": 0.0,
+        "refrigeration_kwh_yr": 0.0,
+        "generators_kwh_yr": 0.0,
+        "total_end_uses_kwh_yr": 60883.33
+      }
+    }
+  ],
+  "objective_definitions": {
+    "FR1": "Comfort proxy (max occupied-zone air temperature surrogate via _fr1_proxy helper in run_simulation.py). Minimisation. To be redefined as discomfort degree-hours in Phase 3 / paper-2 (M3.11 deferred).",
+    "FR2": "Annual HVAC electricity demand (kWh/yr, ZoneAirCooled chillers + fans). Minimisation."
+  },
+  "decision_parameters": {
+    "active_dps": [
+      "orient_idx",
+      "setpoint",
+      "wall_r",
+      "roof_r"
+    ],
+    "deferred_dps": [
+      "glass_u"
+    ],
+    "deferred_dp_rationale": "Glazing injection (M1.5/M1.6) is paper-2 scope. The current IDF has two hardcoded fenestration constructions; glass_u is solved by CP-SAT but NOT physically injected by the IDF patcher, so it is inert in EnergyPlus. glass_u is EXCLUDED from the GSA ranking and held constant at GLASS_U_FIXED = 2.0 W/m^2K throughout this paper's experiments."
+  },
+  "decision_parameter_domains": {
+    "orient_idx": [0, 1, 2, 3],
+    "orient_idx_label_map": {
+      "0": "N (0 deg)",
+      "1": "E (90 deg)",
+      "2": "S (180 deg)",
+      "3": "W (270 deg)"
+    },
+    "setpoint_c": [23.0, 24.0, 25.0, 26.0],
+    "wall_r_m2k_w": [0.5, 1.5, 2.5],
+    "roof_r_m2k_w": [1.0, 2.0, 3.0, 4.0],
+    "glass_u_fixed_w_m2k": 2.0
+  },
+  "provenance": {
+    "model": "5ZoneAirCooled_Opt.idf",
+    "weather_file": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+    "location": "Chicago O'Hare International Airport, IL, USA (TMY3)",
+    "energyplus_version": "25.1.0-68a4a7c774",
+    "vm_machine_type": "e2-standard-8",
+    "vm_workers": 8
+  }
+}
