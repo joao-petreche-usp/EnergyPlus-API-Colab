@@ -92,6 +92,7 @@ class IDFPatcher:
     # Zero-based field indices within each EnergyPlus object type.
     # Field 0 is always the Name field.
     _MATERIAL_THICKNESS_IDX = 2          # Material: Name(0) Roughness(1) Thickness(2) ...
+    _NOMASS_RESISTANCE_IDX = 2           # Material:NoMass: Name(0) Roughness(1) ThermalResistance(2) ...
     _BUILDING_NORTH_AXIS_IDX = 1         # Building: Name(0) NorthAxis(1) Terrain(2) ...
     _FENESTRATION_CONSTRUCTION_IDX = 2   # FenestrationSurface:Detailed: Name(0) Type(1) Construction(2) ...
 
@@ -164,9 +165,13 @@ class IDFPatcher:
         """Set the Thickness field of a Material object (field index 2)."""
         self._set_field('Material', material_name, self._MATERIAL_THICKNESS_IDX, f'{thickness_m:.6f}')
 
-    def set_north_axis(self, degrees: float) -> None:
-        """Set the Building North Axis field (field index 1) on the 'Building' object."""
-        self._set_field('Building', 'Building', self._BUILDING_NORTH_AXIS_IDX, str(float(degrees)))
+    def set_nomass_resistance(self, material_name: str, resistance_m2kw: float) -> None:
+        """Set the Thermal Resistance field of a Material:NoMass object (field index 2)."""
+        self._set_field('Material:NoMass', material_name, self._NOMASS_RESISTANCE_IDX, f'{resistance_m2kw:.6f}')
+
+    def set_north_axis(self, degrees: float, building_name: str = 'Building') -> None:
+        """Set the Building North Axis field (field index 1) on the named Building object."""
+        self._set_field('Building', building_name, self._BUILDING_NORTH_AXIS_IDX, str(float(degrees)))
 
     def set_fenestration_construction(self, surface_name: str, construction_name: str) -> None:
         """Swap the Construction Name field (field index 2) of a FenestrationSurface:Detailed."""

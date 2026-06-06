@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# setup_gcp_env.sh — EnergyPlus-API-Colab GCP VM Setup (v2)
+# setup_gcp_env.sh — EnergyPlus-API-Colab GCP VM Setup (v4)
 # =============================================================================
 # Usage:
 #   cd ~/EnergyPlus-API-Colab
@@ -11,6 +11,34 @@
 #   --with-design   also install requirements/design.txt (plotly, ipykernel) for
 #                   the Designer Decision Explorer notebook (the /design process).
 #
+# Environment overrides:
+#   REPO_URL        Git URL to clone from. Default is the private -dev repo
+#                   (development scope). Public override for paper-reproducibility:
+#                     REPO_URL=https://github.com/joao-petreche-usp/EnergyPlus-API-Colab.git \
+#                       bash _GCP_VM_VERSION/config/setup_gcp_env.sh
+#                   Cloning the private -dev repo requires GitHub auth on the VM
+#                   (e.g. `gh auth login` before invoking this script).
+#                   On previously-provisioned VMs, the script will also re-point
+#                   the existing origin to $REPO_URL when they differ.
+#   PYTHON_VERSION  Python major.minor used for the venv (default: 3.11). Ubuntu
+#                   22.04 ships 3.10 in its default repos; other versions are
+#                   installed via the deadsnakes PPA on demand. Pin to 3.10 only
+#                   if you need to reproduce the pre-v4 environment exactly.
+#
+# Changes in v4:
+#   - PYTHON_VERSION is configurable (default: 3.11). google-cloud-* libraries
+#     warn that Python 3.10 support ends 2026-10-04; 3.11 gives runway. The
+#     script installs the chosen Python from the deadsnakes PPA when not present.
+#   - Step 6 (energyplus.pth) derives the site-packages path from PYTHON_VERSION
+#     instead of hardcoding python3.10.
+#
+# Changes in v3:
+#   - REPO_URL is now configurable via env var (default: -dev). Previously the
+#     script hardcoded the public repo URL, leaving VMs on the public scope
+#     and missing post-2026-05-22 development work (M3.7+).
+#   - On already-provisioned VMs, the script now re-points the existing origin
+#     to REPO_URL when they differ, so a VM bootstrapped from the public repo
+#     can be migrated to the -dev repo by re-running this script.
 # Changes in v2:
 #   - Uses .sh installer (not .run) for EnergyPlus 25.1.0
 #   - printf 'y\n\nn\n' for non-interactive mode
@@ -27,6 +55,9 @@ fail() { echo -e "${RED}❌ $*${NC}"; exit 1; }
 step() { echo -e "\n${YELLOW}── $* ──────────────────────────────${NC}"; }
 
 REPO_DIR="$HOME/EnergyPlus-API-Colab"
+REPO_URL="${REPO_URL:-https://github.com/joao-petreche-usp/EnergyPlus-API-Colab.git}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
+PYTHON_BIN="python${PYTHON_VERSION}"
 VENV_DIR="$REPO_DIR/_GCP_VM_VERSION/.venv"
 EPLUS_VERSION="25.1.0"
 EPLUS_SHA="68a4a7c774"
@@ -48,7 +79,7 @@ for arg in "$@"; do
 done
 
 echo "============================================================"
-echo " EnergyPlus-API-Colab — GCP VM Setup v2"
+echo " EnergyPlus-API-Colab — GCP VM Setup v4 (Python ${PYTHON_VERSION})"
 echo " $(date '+%Y-%m-%d %H:%M:%S UTC')"
 echo "============================================================"
 
@@ -56,7 +87,7 @@ echo "============================================================"
 step "1/7 System dependencies"
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
-    python3-venv python3-pip \
+    python3-pip software-properties-common \
     git wget curl \
     libx11-6 libexpat1 libgl1 \
     libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
@@ -64,15 +95,34 @@ sudo apt-get install -y -qq \
     libxkbcommon-x11-0
 ok "System dependencies installed"
 
+# Install requested Python interpreter (deadsnakes PPA when not in default repos)
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo "   ${PYTHON_BIN} not found; adding deadsnakes PPA..."
+    sudo add-apt-repository -y ppa:deadsnakes/ppa
+    sudo apt-get update -qq
+fi
+sudo apt-get install -y -qq \
+    "${PYTHON_BIN}" "${PYTHON_BIN}-venv" "${PYTHON_BIN}-dev" \
+    || fail "Could not install ${PYTHON_BIN}. Check the active deadsnakes versions at https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa and pin PYTHON_VERSION accordingly."
+ok "Python interpreter: $(${PYTHON_BIN} --version)"
+
 # ── Step 2: Repository ───────────────────────────────────────────────────────
 step "2/7 Repository"
 if [ -d "$REPO_DIR" ]; then
-    cd "$REPO_DIR" && git pull origin main --quiet
-    ok "Repository updated: $REPO_DIR"
+    cd "$REPO_DIR"
+    CURRENT_URL=$(git remote get-url origin 2>/dev/null || echo "")
+    if [ -n "$CURRENT_URL" ] && [ "$CURRENT_URL" != "$REPO_URL" ]; then
+        warn "Existing origin '$CURRENT_URL' differs from requested REPO_URL"
+        echo "   Re-pointing origin → $REPO_URL"
+        git remote set-url origin "$REPO_URL"
+    fi
+    git pull origin main --quiet \
+        || fail "Pull failed. For the private -dev repo, run 'gh auth login' on the VM first, or set REPO_URL=<public-repo-url>"
+    ok "Repository updated: $REPO_DIR (origin=$(git remote get-url origin))"
 else
-    git clone --depth 1 \
-        "https://github.com/joao-petreche-usp/EnergyPlus-API-Colab.git" \
-        "$REPO_DIR"
+    echo "   Cloning from: $REPO_URL"
+    git clone --depth 1 "$REPO_URL" "$REPO_DIR" \
+        || fail "Clone failed. For the private -dev repo, run 'gh auth login' on the VM first, or set REPO_URL=<public-repo-url>"
     ok "Repository cloned: $REPO_DIR"
 fi
 cd "$REPO_DIR"
@@ -80,7 +130,7 @@ cd "$REPO_DIR"
 # ── Step 3: Virtual environment ───────────────────────────────────────────────
 step "3/7 Python virtual environment"
 [ -d "$VENV_DIR" ] && rm -rf "$VENV_DIR"
-python3 -m venv "$VENV_DIR"
+"$PYTHON_BIN" -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip --quiet
 ok "venv: $VENV_DIR ($(python --version))"
@@ -136,7 +186,7 @@ fi
 
 # ── Step 6: PYTHONPATH setup ─────────────────────────────────────────────────
 step "6/7 Configuring PYTHONPATH"
-PTH_DIR="$VENV_DIR/lib/python3.10/site-packages"
+PTH_DIR="$VENV_DIR/lib/python${PYTHON_VERSION}/site-packages"
 mkdir -p "$PTH_DIR"
 echo "$EPLUS_INSTALL" > "$PTH_DIR/energyplus.pth"
 ok "energyplus.pth → $EPLUS_INSTALL"
@@ -181,13 +231,16 @@ echo ""
 echo " Activate venv:"
 echo "   source $VENV_DIR/bin/activate"
 echo ""
-echo " Quick validation (~12s):"
+echo " Quick validation (~14s on e2-standard-8):"
 echo "   cd $REPO_DIR"
 echo "   python _GCP_VM_VERSION/run_simulation.py --mode validate"
 echo ""
 echo " Available modes:"
-echo "   --mode validate   1 base simulation"
-echo "   --mode single     1 simulation with custom DPs"
-echo "   --mode gsa        GSA Morris (--n-morris 20 for testing)"
-echo "   --mode pareto     Full CP-SAT + EnergyPlus pipeline"
+echo "   --mode validate           1 base simulation (~14s on e2-standard-8)"
+echo "   --mode single             1 simulation with custom DPs"
+echo "   --mode gsa                GSA Morris (--n-morris 20 for testing)"
+echo "   --mode pareto             CP-SAT + EnergyPlus Pareto front"
+echo "   --mode pareto-sequential  M3.8 Talami sequential block-propagation"
+echo "   --mode exhaustive         M3.7 full factorial ground truth (192 sims)"
+echo "   --mode calibrate          M3.1 LHS calibration for proxy training"
 echo "============================================================"
