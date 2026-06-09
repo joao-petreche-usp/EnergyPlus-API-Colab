@@ -57,12 +57,20 @@ if str(_gcp_vm_dir) not in sys.path:
 
 import numpy as np
 from src.config import (
+    ACTUATOR_COMPONENT_TYPE,
+    ACTUATOR_CONTROL_TYPE,
+    BUILDING_MODEL,
+    BUILDING_OBJECT_NAME,
     CLG_SCHEDULE_NAME,
     DP_DOMAINS,
     EPLUS_DIR,
+    INSULATION_MODE,
     K_IN02,
     K_IN46,
+    OCCUPIED_ZONES,
     ORIENTATION_MAP,
+    ROOF_INSULATION_NAME,
+    WALL_INSULATION_NAME,
 )
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -246,6 +254,9 @@ def _run_candidate_worker(task: dict):
             setpoint=task["setpoint"],
             candidate_id=task["candidate_id"],
             quiet=task["quiet"],
+            return_comfort=task.get("return_comfort", False),
+            return_zonal_comfort=task.get("return_zonal_comfort", False),
+            comfort_threshold=task.get("comfort_threshold", None),
         )
     except Exception:  # a crashed sim must not abort the whole pool
         log.warning(
@@ -316,14 +327,22 @@ def run_candidate(
     wall_r: float,  # R-value wall insulation (e.g. 2.5)
     roof_r: float,  # R-value roof insulation (e.g. 3.5)
     orientation: float,  # North angle in degrees (0, 90, 180, 270)
-    setpoint: float,  # °C (ex: 24.0)
+    setpoint: "float | dict[str, float]",  # °C scalar (legacy) or dict per-zone
     candidate_id: str = "candidate",
     quiet: bool = False,
-) -> Optional[float]:
+    return_comfort: bool = False,
+    comfort_threshold: "float | None" = None,
+    return_zonal_comfort: bool = False,
+) -> "Optional[float] | Optional[dict]":
+    """Run 1 EnergyPlus simulation with the provided DPs.
+
+    setpoint: if float, applied globally to CLG_SCHEDULE_NAME.
+              if dict, applied per-zone via ZONE_SCHEDULE_NAMES.
+    return_comfort=False: returns annual HVAC energy (kWh) or None.
+    return_comfort=True: returns {"hvac_kwh": float, "discomfort_kh": float}
+    return_zonal_comfort=True: returns {"hvac_kwh": float, "discomfort_kh": dict[str, float]}
     """
-    Run 1 EnergyPlus simulation with the provided DPs.
-    Returns annual HVAC energy (kWh) or None on failure.
-    """
+    from src.config import ZONE_SCHEDULE_NAMES  # noqa: PLC0415
     from src.utils.idf_patcher import IDFPatcher
 
     sim_dir = output_dir / candidate_id
@@ -333,42 +352,116 @@ def run_candidate(
     # 1. Pre-processing: patch IDF (geometry + envelope)
     patcher = IDFPatcher(idf_base)
     patcher.reset()
-    patcher.set_north_axis(orientation)
-    patcher.set_material_thickness("IN02", wall_r * K_IN02)
-    patcher.set_material_thickness("IN46", roof_r * K_IN46)  # M1.4
-    # glazing (M1.6) — not yet implemented in base IDF
+    patcher.set_north_axis(orientation, BUILDING_OBJECT_NAME)
+    if INSULATION_MODE == "nomass":
+        patcher.set_nomass_resistance(WALL_INSULATION_NAME, wall_r)
+        patcher.set_nomass_resistance(ROOF_INSULATION_NAME, roof_r)
+    else:
+        patcher.set_material_thickness(WALL_INSULATION_NAME, wall_r * K_IN02)
+        patcher.set_material_thickness(ROOF_INSULATION_NAME, roof_r * K_IN46)
     patcher.save(temp_idf)
 
-    # 2. Runtime: setpoint injection via Exchange API (closure over `setpoint`)
+    # 2. Runtime: setpoint injection + optional FR1 comfort tracking via Exchange API
     _initialized = False
-    _actuator = -1
+    _actuators: dict[str, int] = {}  # schedule_name -> handle
+    _zone_handles: dict[str, int] = {}  # zone_name -> handle
+    
+    # Comfort accumulators
+    _global_comfort_kh = 0.0
+    _zonal_comfort_kh = {z: 0.0 for z in OCCUPIED_ZONES}
+
+    # Resolve threshold logic
+    _thresh_global = comfort_threshold if comfort_threshold is not None else (setpoint if isinstance(setpoint, (int, float)) else 24.0)
+    _thresh_zonal = {}
+    for z in OCCUPIED_ZONES:
+        if comfort_threshold is not None:
+            _thresh_zonal[z] = comfort_threshold
+        elif isinstance(setpoint, dict):
+            _thresh_zonal[z] = setpoint.get(z, 24.0)
+        else:
+            _thresh_zonal[z] = setpoint
 
     def _on_begin_zone_timestep(state_arg):
-        nonlocal _initialized, _actuator
+        nonlocal _initialized, _actuators, _zone_handles
         if not _initialized and api.exchange.api_data_fully_ready(state_arg):
-            _actuator = api.exchange.get_actuator_handle(
-                state_arg, "Schedule:Compact", "Schedule Value", CLG_SCHEDULE_NAME
-            )
+            # Request Actuators
+            if isinstance(setpoint, dict):
+                # Multi-zone mode: get per-zone handles
+                for z, actuator_key in ZONE_SCHEDULE_NAMES.items():
+                    h = api.exchange.get_actuator_handle(
+                        state_arg, ACTUATOR_COMPONENT_TYPE, ACTUATOR_CONTROL_TYPE, actuator_key
+                    )
+                    if h != -1:
+                        _actuators[actuator_key] = h
+                    else:
+                        log.warning(f"  Actuator handle not found: {actuator_key}")
+            else:
+                # Legacy mode: get single global handle
+                h = api.exchange.get_actuator_handle(
+                    state_arg, "Schedule:Compact", "Schedule Value", CLG_SCHEDULE_NAME
+                )
+                if h != -1:
+                    _actuators[CLG_SCHEDULE_NAME] = h
+
+            # Request Comfort Variables
+            if return_comfort or return_zonal_comfort:
+                for z in OCCUPIED_ZONES:
+                    h = api.exchange.get_variable_handle(
+                        state_arg, "Zone Mean Air Temperature", z
+                    )
+                    if h != -1:
+                        _zone_handles[z] = h
+                    else:
+                        log.warning(f"  Zone temperature handle not found: {z!r}")
             _initialized = True
+
         if not _initialized or not api.exchange.api_data_fully_ready(state_arg):
             return
         if api.exchange.warmup_flag(state_arg):
             return
-        if _actuator != -1:
-            api.exchange.set_actuator_value(state_arg, _actuator, setpoint)
+
+        # Inject Setpoints
+        if isinstance(setpoint, dict):
+            for z, actuator_key in ZONE_SCHEDULE_NAMES.items():
+                if actuator_key in _actuators:
+                    val = setpoint.get(z, 24.0)
+                    api.exchange.set_actuator_value(state_arg, _actuators[actuator_key], val)
+        else:
+            if CLG_SCHEDULE_NAME in _actuators:
+                api.exchange.set_actuator_value(state_arg, _actuators[CLG_SCHEDULE_NAME], float(setpoint))
+
+    def _on_end_zone_timestep(state_arg):
+        nonlocal _global_comfort_kh, _zonal_comfort_kh
+        if not _zone_handles or not api.exchange.api_data_fully_ready(state_arg):
+            return
+        if api.exchange.warmup_flag(state_arg):
+            return
+            
+        dt_h = api.exchange.zone_time_step(state_arg)
+        for z, h in _zone_handles.items():
+            t_zone = api.exchange.get_variable_value(state_arg, h)
+            # Legacy scalar tracking
+            if t_zone > _thresh_global:
+                _global_comfort_kh += (t_zone - _thresh_global) * dt_h
+            # Granular zonal tracking
+            tz_thresh = _thresh_zonal.get(z, 24.0)
+            if t_zone > tz_thresh:
+                _zonal_comfort_kh[z] += (t_zone - tz_thresh) * dt_h
 
     state = api.state_manager.new_state()
+    if return_comfort or return_zonal_comfort:
+        for z in OCCUPIED_ZONES:
+            api.exchange.request_variable(state, "Zone Mean Air Temperature", z)
     try:
         api.runtime.callback_begin_zone_timestep_after_init_heat_balance(
             state, _on_begin_zone_timestep
         )
+        if return_comfort or return_zonal_comfort:
+            api.runtime.callback_end_zone_timestep_before_zone_reporting(
+                state, _on_end_zone_timestep
+            )
 
-        # Run with CWD = sim_dir. EnergyPlus's --readvars post-processor (ReadVarsESO)
-        # writes a shared-name scratch file `readvars.audit` in the process working
-        # directory; concurrent runs sharing a CWD collide on it ("file already in use
-        # by another process" → Severe → exit 1). Per-run CWD isolates it. All path
-        # args are absolute so chdir cannot break their resolution.
-        args = [
+        eplus_args = [
             "-w",
             str(epw_path.resolve()),
             "-d",
@@ -381,21 +474,27 @@ def run_candidate(
         try:
             if quiet:
                 with _eplus_quiet():
-                    exit_code = api.runtime.run_energyplus(state, args)
+                    exit_code = api.runtime.run_energyplus(state, eplus_args)
             else:
-                exit_code = api.runtime.run_energyplus(state, args)
+                exit_code = api.runtime.run_energyplus(state, eplus_args)
         finally:
             os.chdir(_prev_cwd)
     finally:
-        # Always release the EnergyPlus state, even on error — otherwise C-level
-        # resources leak across the many tasks handled by a pool worker.
         api.state_manager.delete_state(state)
 
     if exit_code != 0:
         log.warning(f"  Simulation {candidate_id} failed (exit {exit_code})")
         return None
 
-    return _extract_hvac_energy(sim_dir)
+    hvac_kwh = _extract_hvac_energy(sim_dir)
+    if hvac_kwh is None:
+        return None
+
+    if return_zonal_comfort:
+        return {"hvac_kwh": hvac_kwh, "discomfort_kh": _zonal_comfort_kh}
+    elif return_comfort:
+        return {"hvac_kwh": hvac_kwh, "discomfort_kh": _global_comfort_kh}
+    return hvac_kwh
 
 
 # ── Mode: validate ────────────────────────────────────────────────────────────
@@ -426,7 +525,25 @@ def mode_validate(args, idf_path: Path, epw_path: Path) -> int:
         )
         return 1
 
-    log.info(f"  ✅ Annual HVAC Energy: {energy} kWh")
+    if energy is None:
+        log.error("  ❌ Simulation did not return an energy value.")
+        return 1
+
+    if BUILDING_MODEL == "5zone":
+        # Exact numerical verification for reproducibility (Copilot M4 resolution)
+        expected_energy = 64519.50
+        tolerance = 2.0  # Safe float/OS variance floor (0.003%)
+        diff = abs(energy - expected_energy)
+        if diff > tolerance:
+            log.error(
+                f"  ❌ Energy mismatch! Expected: {expected_energy} kWh, Got: {energy} kWh "
+                f"(diff: {diff:.2f} kWh > tolerance {tolerance} kWh)"
+            )
+            return 1
+        log.info(f"  ✅ Annual HVAC Energy: {energy} kWh (Exact match within tolerance)")
+    else:
+        log.info(f"  ✅ Annual HVAC Energy: {energy} kWh")
+
     log.info("  Validation OK — ready to scale (gsa or pareto mode).")
 
     if args.bucket:
@@ -1080,6 +1197,91 @@ def mode_pareto(args, idf_path: Path, epw_path: Path) -> int:
     return 0
 
 
+# ── Mode: gsa-sobol ───────────────────────────────────────────────────────────
+def mode_gsa_sobol(args, idf_path: Path, epw_path: Path) -> int:
+    """M2: Sobol GSA with both FR1 (discomfort degree-hours) and FR2 (HVAC energy).
+
+    Saltelli N × (k+2) EnergyPlus runs → S1/ST indices per DP per FR →
+    data/gsa_samples.csv, data/gsa_results.csv, data/gsa_results.json,
+    data/figures/figure1_sobol_heatmap.{png,svg}.
+
+    Checkpoints: samples CSV is written before the batch; results CSV is written
+    after the batch. A crashed mid-run can resume by re-running (re-samples with
+    same seed, results are recomputed).
+    """
+    log.info("=== MODE: gsa-sobol ===")
+    from src.pre_processing.gsa_sampler import PROBLEM, n_sims, sample_saltelli, save_samples
+    from src.pre_processing.gsa_runner import build_tasks, run_and_collect, save_results
+    from src.analysis import gsa_analysis, ad_matrix
+
+    data_dir = Path(__file__).resolve().parent / "data"
+    samples_path = data_dir / "gsa_samples.csv"
+    results_path = data_dir / "gsa_results.csv"
+    sobol_path = data_dir / "gsa_results.json"
+    ad_path = data_dir / "gsa_ad_matrix.json"
+
+    N = args.n_sobol
+    seed = args.seed
+    total = n_sims(N)
+    log.info(f"  Saltelli N={N}, seed={seed} → {total} simulations")
+    log.info(f"  Workers: {args.workers}")
+
+    # Step 1: Sample
+    X = sample_saltelli(N=N, seed=seed)
+    save_samples(X, samples_path)
+    log.info(f"  Samples saved → {samples_path}")
+
+    # Step 2: Run batch
+    out = WORK_DIR / "gsa_sobol"
+    out.mkdir(parents=True, exist_ok=True)
+    tasks = build_tasks(X, idf_path, epw_path, out, quiet=args.quiet)
+    df = run_and_collect(tasks, args.workers, chunk_size=args.chunk_size)
+    save_results(df, results_path)
+
+    # Check for failures before Sobol analysis
+    n_nan = int(df[["fr1_kh", "fr2_kwh"]].isna().any(axis=1).sum())
+    if n_nan > 0:
+        log.error(
+            f"  {n_nan}/{total} sims failed — cannot compute Sobol indices. "
+            "Investigate failures and re-run."
+        )
+        return 1
+
+    # Step 3: Sobol analysis
+    import numpy as np
+    Y_fr1 = df["fr1_kh"].to_numpy()
+    Y_fr2 = df["fr2_kwh"].to_numpy()
+    sobol_result = gsa_analysis.analyze_both(
+        Y_fr1, Y_fr2, PROBLEM, n_samples=N, out_path=sobol_path
+    )
+
+    # Step 4: AD matrix
+    ad_result = ad_matrix.build_ad_matrix(sobol_result)
+    ad_matrix.save(ad_result, ad_path)
+
+    # Step 5: Figure 1
+    try:
+        import subprocess
+        fig_script = Path(__file__).resolve().parent / "scripts" / "generate_figure1.py"
+        subprocess.run(
+            [sys.executable, str(fig_script), "--input", str(sobol_path)],
+            check=True,
+        )
+    except Exception as e:
+        log.warning(f"  Figure 1 generation failed (non-fatal): {e}")
+
+    if args.bucket:
+        stage_out(
+            args.bucket, out, f"results/gcp_vm_gsa_sobol_{datetime.now():%Y%m%d_%H%M%S}"
+        )
+        for p in (samples_path, results_path, sobol_path, ad_path):
+            if p.exists():
+                stage_out(args.bucket, p.parent, f"results/gsa_sobol_data")
+
+    log.info("  ✅ gsa-sobol complete.")
+    return 0
+
+
 # ── Mode: pareto-sequential ───────────────────────────────────────────────────
 def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
     """
@@ -1114,7 +1316,7 @@ def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
     # share the same physical configuration as the corresponding slice of the
     # M3.7 exhaustive grid — required for unbiased M3.9 effectiveness scoring.
     WALL_R_BASE = 1.5   # ∈ wall_rs = [0.5, 1.5, 2.5] (median)
-    ROOF_R_BASE = 2.0   # ∈ roof_rs = [1.0, 2.0, 3.0, 4.0] (on-grid)
+    ROOF_R_BASE = 2.0   # ∈ roof_rs = [1.0, 2.0, 3.0, 4.0] (on-grid; was 2.5 off-grid)
 
     # ── Block 1: orient × setpoint (envelope fixed at baseline) ──────────────
     log.info(f"\n  Block 1: {len(orient_idxs)}×{len(setpoints)} = "
@@ -1261,7 +1463,7 @@ def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
     results_path.write_text(json.dumps(out_data, indent=2))
     log.info(f"\n  Results saved: {results_path}")
 
-    # Markdown summary (M3.9 report)
+    # Markdown summary (M3.9 report — copy to plan/cpsat_validation_XXXX.md)
     if benchmark:
         md = (
             f"# M3.9 Benchmark — Pareto Sequential vs Exhaustive\n\n"
@@ -1343,7 +1545,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["validate", "single", "gsa", "pareto", "exhaustive", "calibrate", "pareto-sequential"],
+        choices=["validate", "single", "gsa", "gsa-sobol", "pareto", "exhaustive", "calibrate", "pareto-sequential"],
         default="validate",
         help="Execution mode (default: validate)",
     )
@@ -1361,6 +1563,17 @@ def main() -> int:
         "--quiet",
         action="store_true",
         help="Suppress verbose EnergyPlus output (Warming up, Initializing...)",
+    )
+    parser.add_argument(
+        "--scratch-dir",
+        type=str,
+        default="/tmp/energyplus_sim",
+        help="Directory for temporary simulation files (e.g. /mnt/local_ssd)",
+    )
+    parser.add_argument(
+        "--auto-shutdown",
+        action="store_true",
+        help="Shut down the VM via sudo poweroff when the run finishes.",
     )
     parser.add_argument(
         "--workers",
@@ -1390,7 +1603,36 @@ def main() -> int:
         "--n-calibrate",
         type=int,
         default=80,
-        help="LHS draws for the calibration run (default: 80; dedupes to fewer sims)",
+        help="Calibration run draws: LHS N (default: 80), or Saltelli base N "
+             "(total sims = N*(k+2) = N*9 for 7 vars; default 80 → 720 rows)",
+    )
+    parser.add_argument(
+        "--sampling",
+        choices=["lhs", "saltelli"],
+        default="lhs",
+        help="calibrate sampling strategy: lhs (default) or saltelli "
+             "(outputs Sobol S1/ST → sobol_indices.json)",
+    )
+
+    # gsa-sobol mode (M2)
+    parser.add_argument(
+        "--n-sobol",
+        type=int,
+        default=128,
+        help="Saltelli base N for gsa-sobol mode. Total sims = N*(k+2) "
+             "(default: 128 → 768 sims for 4 DPs)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for Saltelli sampling (default: 42)",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=256,
+        help="Sim dir cleanup chunk size for gsa-sobol mode (default: 256)",
     )
 
     # pareto mode
@@ -1435,6 +1677,24 @@ def main() -> int:
     if args.workers < 1:
         args.workers = 1
 
+    global WORK_DIR
+    WORK_DIR = Path(args.scratch_dir)
+    
+    # If using a custom scratch directory like an NVMe mount, wait for the background
+    # startup script (mkfs + mount + chmod) to finish making it writable.
+    if str(WORK_DIR) != "/tmp/energyplus_sim":
+        import time
+        retries = 30
+        while retries > 0:
+            if WORK_DIR.exists() and os.access(WORK_DIR, os.W_OK):
+                break
+            if not WORK_DIR.exists() and os.access(WORK_DIR.parent, os.W_OK):
+                break
+            log.info(f"Waiting for {WORK_DIR} to become writable (startup script running)...")
+            time.sleep(2)
+            retries -= 1
+
+
     log.info(f"EnergyPlus dir : {EPLUS_DIR}")
     log.info(f"Mode           : {args.mode}")
     log.info(f"GCS Bucket     : {args.bucket}")
@@ -1456,7 +1716,8 @@ def main() -> int:
             return 1
     else:
         log.info("Stage-In: downloading inputs from GCS...")
-        ok_idf = stage_in(args.bucket, args.idf, idf_local)
+        idf_gcs = args.idf
+        ok_idf = stage_in(args.bucket, idf_gcs, idf_local)
         ok_epw = stage_in(args.bucket, args.epw, epw_local)
         if not ok_idf or not ok_epw:
             log.error("Stage-In failed. Use --no-gcs for local development.")
@@ -1467,15 +1728,24 @@ def main() -> int:
         "validate": mode_validate,
         "single": mode_single,
         "gsa": mode_gsa,
+        "gsa-sobol": mode_gsa_sobol,
         "pareto": mode_pareto,
         "exhaustive": mode_exhaustive,
         "calibrate": mode_calibrate,
         "pareto-sequential": mode_pareto_sequential,
     }
-    rc = dispatch[args.mode](args, idf_local, epw_local)
+    rc = 1
+    try:
+        rc = dispatch[args.mode](args, idf_local, epw_local)
 
-    if rc == 0 and _should_check_billing(args):
-        _run_billing_check(args)
+        if rc == 0 and _should_check_billing(args):
+            _run_billing_check(args)
+    finally:
+        if args.auto_shutdown:
+            log.info("=== HPC Auto-Shutdown: turning off VM in 5 seconds ===")
+            import time
+            time.sleep(5)
+            os.system("sudo poweroff")
 
     return rc
 

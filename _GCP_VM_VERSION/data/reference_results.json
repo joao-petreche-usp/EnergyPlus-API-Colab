@@ -142,19 +142,38 @@
     "deferred_dps": [
       "glass_u"
     ],
-    "deferred_dp_rationale": "Glazing injection (M1.5/M1.6) is paper-2 scope. The current IDF has two hardcoded fenestration constructions; glass_u is solved by CP-SAT but NOT physically injected by the IDF patcher, so it is inert in EnergyPlus. glass_u is EXCLUDED from the GSA ranking and held constant at GLASS_U_FIXED = 2.0 W/m^2K throughout this paper's experiments."
+    "deferred_dp_rationale": "Glazing injection (M1.5/M1.6) is paper-2 scope. The current IDF has two hardcoded fenestration constructions; glass_u is solved by CP-SAT but NOT physically injected by the IDF patcher, so it is inert in EnergyPlus. For this reason glass_u is EXCLUDED from the GSA ranking and held constant at GLASS_U_FIXED = 2.0 W/m^2K throughout this paper's experiments. Any GSA score the variable might carry in the Morris dataset (gsa_results_20260518.json) reflects sampling noise of an inert input, not a physical sensitivity, and therefore is not cited as evidence of low impact. The variable's full integration is scheduled as future work alongside the window-construction catalogue (M1.5/M1.6) under the Phase 3 / paper-2 architecture."
   },
   "decision_parameter_domains": {
-    "orient_idx": [0, 1, 2, 3],
+    "orient_idx": [
+      0,
+      1,
+      2,
+      3
+    ],
     "orient_idx_label_map": {
       "0": "N (0 deg)",
       "1": "E (90 deg)",
       "2": "S (180 deg)",
       "3": "W (270 deg)"
     },
-    "setpoint_c": [23.0, 24.0, 25.0, 26.0],
-    "wall_r_m2k_w": [0.5, 1.5, 2.5],
-    "roof_r_m2k_w": [1.0, 2.0, 3.0, 4.0],
+    "setpoint_c": [
+      23.0,
+      24.0,
+      25.0,
+      26.0
+    ],
+    "wall_r_m2k_w": [
+      0.5,
+      1.5,
+      2.5
+    ],
+    "roof_r_m2k_w": [
+      1.0,
+      2.0,
+      3.0,
+      4.0
+    ],
     "glass_u_fixed_w_m2k": 2.0
   },
   "provenance": {
@@ -163,6 +182,18 @@
     "location": "Chicago O'Hare International Airport, IL, USA (TMY3)",
     "energyplus_version": "25.1.0-68a4a7c774",
     "vm_machine_type": "e2-standard-8",
-    "vm_workers": 8
+    "vm_workers": 8,
+    "validation_report": "plan/cpsat_validation_2026.md",
+    "raw_results_json": "pareto_sequential_20260525_173224.json (in winning_run_gcs_path)"
+  },
+  "future_work_pointers": {
+    "glass_u_integration": "Phase 3 (paper-2) under the unified architecture (Dantzig-Wolfe + NA-IPM + CP-SAT); design notes in context_docs/phase3_scaling/",
+    "fr1_refinement_to_degree_hours": "M3.11, deferred to Phase 3 to avoid invalidating this snapshot's comparison with the M3.7 exhaustive ground truth",
+    "next_immediate_step": "First sub-problem of the Dantzig-Wolfe master loop, reusing the marginal-tables linearization validated in M3.3 / M3.9 \u2014 see plan/notebooklm_briefing_2026-05-25.md and the NotebookLM recommendation in plan/notebooklm/round1_response.md"
+  },
+  "end_uses_provenance": {
+    "source": "eplustbl.htm 'End Uses' subreport, summing all energy columns (every fuel reported in [GJ]) and converting to kWh via 1 GJ = 1e9/3.6e6 kWh. The Water [m3] column is skipped.",
+    "script": "_GCP_VM_VERSION/scripts/update_reference_with_end_uses.py",
+    "notes": "Heating / cooling / fans / pumps separated to support paper-1 Section 4 defense (Round 2 of NotebookLM 2026-05-25 validation). Recomputed totals were checked against pareto_front[].hvac_energy_kwh_yr within 1%. 5ZoneAirCooled_Opt.idf uses Natural Gas for heating and Electricity for cooling/fans/pumps, so summing all [GJ] columns is required to reconcile with the total HVAC energy reported by run_candidate."
   }
 }

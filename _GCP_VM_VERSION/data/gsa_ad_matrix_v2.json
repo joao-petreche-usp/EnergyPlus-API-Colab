@@ -1,0 +1,42 @@
+{
+  "threshold": 0.05,
+  "dps": [
+    {
+      "dp": "orient_idx",
+      "s1_fr1": 0.0253,
+      "s1_fr2": 0.0155,
+      "dominant_fr": "fr1",
+      "coupled": false,
+      "decoupled": false,
+      "inert": true
+    },
+    {
+      "dp": "setpoint",
+      "s1_fr1": 0.9849,
+      "s1_fr2": 0.0399,
+      "dominant_fr": "fr1",
+      "coupled": false,
+      "decoupled": true,
+      "inert": false
+    },
+    {
+      "dp": "wall_r",
+      "s1_fr1": 0.0105,
+      "s1_fr2": 0.398,
+      "dominant_fr": "fr2",
+      "coupled": false,
+      "decoupled": true,
+      "inert": false
+    },
+    {
+      "dp": "roof_r",
+      "s1_fr1": 0.0078,
+      "s1_fr2": 0.5483,
+      "dominant_fr": "fr2",
+      "coupled": false,
+      "decoupled": true,
+      "inert": false
+    }
+  ],
+  "markdown_table": "<!-- AD matrix \u2014 S1 threshold = 0.05 -->\n| DP | S1 FR1 | S1 FR2 | Dominant | Status |\n|---|---|---|---|---|\n| orient_idx | 0.0253 | 0.0155 | fr1 | inert |\n| setpoint | 0.9849 | 0.0399 | fr1 | decoupled |\n| wall_r | 0.0105 | 0.3980 | fr2 | decoupled |\n| roof_r | 0.0078 | 0.5483 | fr2 | decoupled |"
+}
