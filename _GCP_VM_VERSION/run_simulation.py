@@ -1428,6 +1428,13 @@ def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
     if args.bucket and not args.no_gcs:
         stage_in(args.bucket, args.ground_truth_gcs, gt_local)
 
+    # Fallback: in --no-gcs mode, look for the shipped copy under data/
+    # so a clean clone reproduces the benchmark without manual staging.
+    if not gt_local.exists():
+        shipped_gt = Path(__file__).resolve().parent / "data" / "exhaustive_pareto_ref.json"
+        if shipped_gt.exists():
+            gt_local = shipped_gt
+
     if gt_local.exists():
         benchmark = _benchmark_vs_exhaustive(p2, gt_local)
         benchmark["n_sequential_total_sims"] = n_total
