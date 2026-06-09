@@ -84,7 +84,10 @@ log = logging.getLogger(__name__)
 # ── Project Constants ─────────────────────────────────────────────────────────
 DEFAULT_BUCKET = "eplus-colab-cloud-data"
 DEFAULT_IDF_GCS = "models/5ZoneAirCooled.idf"
+DEFAULT_MULTIZONE_IDF_GCS = "models/5ZoneAirCooled_MultiZone.idf"
+DEFAULT_MEDIUM_OFFICE_IDF_GCS = "models/MediumOffice_MultiZone.idf"
 DEFAULT_EPW_GCS = "weather/USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw"
+DEFAULT_BUFFALO_EPW_GCS = "weather/USA_NY_Buffalo-Greater.Buffalo.Intl.AP.725280_TMY3.epw"
 WORK_DIR = Path("/tmp/energyplus_sim")
 
 # glass_u held constant until glazing injection lands (M1.6); see mode_exhaustive.
@@ -1234,7 +1237,11 @@ def mode_gsa_sobol(args, idf_path: Path, epw_path: Path) -> int:
     # Step 2: Run batch
     out = WORK_DIR / "gsa_sobol"
     out.mkdir(parents=True, exist_ok=True)
-    tasks = build_tasks(X, idf_path, epw_path, out, quiet=args.quiet)
+    # comfort_threshold=24.0 ensures FR1 = Σ max(0, T - 24°C) Δt (manuscript §2.1).
+    # Without it, gsa_runner defaults to dynamic setpoint as threshold, which
+    # measures tracking-error and inverts the sign of corr(setpoint, FR1).
+    tasks = build_tasks(X, idf_path, epw_path, out, quiet=args.quiet,
+                        comfort_threshold=24.0)
     df = run_and_collect(tasks, args.workers, chunk_size=args.chunk_size)
     save_results(df, results_path)
 
@@ -1504,8 +1511,338 @@ def mode_pareto_sequential(args, idf_path: Path, epw_path: Path) -> int:
     return 0
 
 
+# ── Mode: multizone-calibrate ─────────────────────────────────────────────────
+def mode_multizone_calibrate(args, idf_path: Path, epw_path: Path) -> int:
+    """
+    Phase B: Calibration run for zone-independent control.
+
+    --sampling lhs      : LHS over 7 vars, --n-calibrate draws (default)
+    --sampling saltelli : Saltelli matrix, --n-calibrate base N →
+                          N*(k+2) = N*9 total rows; computes Sobol S1/ST
+                          for FR2 and FR1 → multizone_sobol_indices.json
+    """
+    import numpy as np
+    sampling = getattr(args, "sampling", "lhs")
+    log.info(f"=== MODE: multizone-calibrate (sampling={sampling}) ===")
+
+    out = WORK_DIR / "multizone_calibrate"
+    out.mkdir(parents=True, exist_ok=True)
+
+    n_zones = len(OCCUPIED_ZONES)
+    sp_lo, sp_hi = DP_DOMAINS["setpoint"]
+    sp_names = [f"sp{i+1}" for i in range(n_zones)]
+    problem = {
+        "num_vars": n_zones + 2,
+        "names": sp_names + ["wall_r_i", "roof_r_i"],
+        "bounds": [[sp_lo, sp_hi]] * n_zones + [[0, 4], [0, 4]],
+    }
+    log.info(f"  Calibration: {n_zones} zones ({BUILDING_MODEL}), {problem['num_vars']} variables")
+
+    def _snap(row) -> tuple:
+        sps = tuple(int(round(min(max(row[i], sp_lo), sp_hi))) for i in range(n_zones))
+        wr = CALIB_WALL_R_GRID[int(round(min(max(row[n_zones], 0), 4)))]
+        rr = CALIB_ROOF_R_GRID[int(round(min(max(row[n_zones + 1], 0), 4)))]
+        return sps + (wr, rr)
+
+    # ── Generate sample matrix ────────────────────────────────────────────────
+    # Pin seed for reproducibility — without it SALib draws from system entropy,
+    # which makes the calibration JSON (and therefore the downstream DW result)
+    # different on every run.
+    if sampling == "saltelli":
+        from SALib.sample import sobol as saltelli_sampler
+        raw_matrix = saltelli_sampler.sample(
+            problem, args.n_calibrate, calc_second_order=False, seed=args.seed
+        )
+        n_total = len(raw_matrix)
+        k = problem["num_vars"]
+        log.info(
+            f"  Saltelli matrix: {n_total} rows "
+            f"(N={args.n_calibrate}, k={k} → N*(k+2)={n_total}, seed={args.seed})"
+        )
+    else:
+        from SALib.sample import latin
+        raw_matrix = latin.sample(problem, args.n_calibrate, seed=args.seed)
+        log.info(f"  LHS matrix: {len(raw_matrix)} rows (seed={args.seed})")
+
+    # Snap all rows; dedupe for simulation efficiency
+    snapped_all = [_snap(r) for r in raw_matrix]
+    unique_configs = sorted(set(snapped_all))
+    log.info(
+        f"  {len(unique_configs)} unique configs to simulate "
+        f"(from {len(snapped_all)} total rows)"
+    )
+
+    # ── Run simulations on unique configs ─────────────────────────────────────
+    tasks = []
+    for i, config_tuple in enumerate(unique_configs):
+        sps = config_tuple[:n_zones]
+        wr, rr = config_tuple[n_zones], config_tuple[n_zones + 1]
+        tasks.append({
+            "key": f"mzcal_{i:04d}",
+            "idf_base": idf_path,
+            "epw_path": epw_path,
+            "output_dir": out,
+            "wall_r": wr,
+            "roof_r": rr,
+            "orientation": 0.0,
+            "setpoint": {z: float(sp) for z, sp in zip(OCCUPIED_ZONES, sps)},
+            "candidate_id": f"mzcal_{i:04d}",
+            "quiet": args.quiet,
+            "return_zonal_comfort": True,
+            "comfort_threshold": 24.0,
+        })
+
+    batch = run_batch(tasks, args.workers, label="multizone-calibrate", log_every=25)
+
+    # ── Collect results ───────────────────────────────────────────────────────
+    results = []
+    result_lookup: dict = {}  # snapped tuple → raw sim result dict
+    for i, config_tuple in enumerate(unique_configs):
+        sps = config_tuple[:n_zones]
+        wr, rr = config_tuple[n_zones], config_tuple[n_zones + 1]
+        res = batch.get(f"mzcal_{i:04d}")
+        if res is not None:
+            results.append({
+                "candidate_id": f"mzcal_{i:04d}",
+                "setpoints": {z: int(sp) for z, sp in zip(OCCUPIED_ZONES, sps)},
+                "wall_r": wr,
+                "roof_r": rr,
+                "hvac_energy_kwh": res["hvac_kwh"],
+                "discomfort_kh": res["discomfort_kh"],
+            })
+            result_lookup[config_tuple] = res
+
+    out_data = {
+        "sampling": sampling,
+        "n_samples": len(unique_configs),
+        "n_valid": len(results),
+        "wall_r_grid": CALIB_WALL_R_GRID,
+        "roof_r_grid": CALIB_ROOF_R_GRID,
+        "samples": results,
+    }
+    results_path = out / "multizone_calibration_samples.json"
+    results_path.write_text(json.dumps(out_data, indent=2))
+    log.info(f"\n  {len(results)}/{len(unique_configs)} valid — saved to: {results_path}")
+
+    # ── Sobol analysis (saltelli only) ────────────────────────────────────────
+    if sampling == "saltelli":
+        from SALib.analyze import sobol as sobol_analyze
+
+        # Build output vectors over the full Saltelli matrix.
+        # Failed/missing configs are filled with the column mean so the
+        # required N*(k+2) vector length is preserved (Saltelli requirement).
+        Y_fr2 = np.array([
+            result_lookup[k]["hvac_kwh"] if k in result_lookup else np.nan
+            for k in snapped_all
+        ])
+        Y_fr1 = np.array([
+            (sum(result_lookup[k]["discomfort_kh"].values())
+             if isinstance(result_lookup[k]["discomfort_kh"], dict)
+             else result_lookup[k]["discomfort_kh"])
+            if k in result_lookup else np.nan
+            for k in snapped_all
+        ])
+
+        n_missing = int(np.isnan(Y_fr2).sum())
+        if n_missing:
+            log.warning(
+                f"  Sobol: {n_missing}/{len(snapped_all)} rows failed — "
+                "filling with column mean (required for complete Saltelli vector)"
+            )
+            Y_fr2 = np.where(np.isnan(Y_fr2), np.nanmean(Y_fr2), Y_fr2)
+            Y_fr1 = np.where(np.isnan(Y_fr1), np.nanmean(Y_fr1), Y_fr1)
+
+        Si_fr2 = sobol_analyze.analyze(
+            problem, Y_fr2, calc_second_order=False, print_to_console=False
+        )
+        Si_fr1 = sobol_analyze.analyze(
+            problem, Y_fr1, calc_second_order=False, print_to_console=False
+        )
+
+        names = problem["names"]
+        sobol_out = {
+            "n_saltelli_base": args.n_calibrate,
+            "n_total_rows": len(snapped_all),
+            "n_valid_rows": len(result_lookup),
+            "FR2_hvac_energy_kwh": {
+                "S1":      {v: round(float(s), 4) for v, s in zip(names, Si_fr2["S1"])},
+                "ST":      {v: round(float(s), 4) for v, s in zip(names, Si_fr2["ST"])},
+                "S1_conf": {v: round(float(s), 4) for v, s in zip(names, Si_fr2["S1_conf"])},
+                "ST_conf": {v: round(float(s), 4) for v, s in zip(names, Si_fr2["ST_conf"])},
+            },
+            "FR1_total_discomfort_kh": {
+                "S1":      {v: round(float(s), 4) for v, s in zip(names, Si_fr1["S1"])},
+                "ST":      {v: round(float(s), 4) for v, s in zip(names, Si_fr1["ST"])},
+                "S1_conf": {v: round(float(s), 4) for v, s in zip(names, Si_fr1["S1_conf"])},
+                "ST_conf": {v: round(float(s), 4) for v, s in zip(names, Si_fr1["ST_conf"])},
+            },
+        }
+        sobol_path = out / "multizone_sobol_indices.json"
+        sobol_path.write_text(json.dumps(sobol_out, indent=2))
+
+        log.info(f"\n  ── Sobol Indices (FR2 / FR1) ─────────────────────────────────────────")
+        log.info(f"  {'Variable':12s}  {'S1(FR2)':>9s}  {'ST(FR2)':>9s}  {'S1(FR1)':>9s}  {'ST(FR1)':>9s}")
+        log.info(f"  {'-'*12}  {'-'*9}  {'-'*9}  {'-'*9}  {'-'*9}")
+        for v in names:
+            log.info(
+                f"  {v:12s}  "
+                f"{sobol_out['FR2_hvac_energy_kwh']['S1'][v]:>9.4f}  "
+                f"{sobol_out['FR2_hvac_energy_kwh']['ST'][v]:>9.4f}  "
+                f"{sobol_out['FR1_total_discomfort_kh']['S1'][v]:>9.4f}  "
+                f"{sobol_out['FR1_total_discomfort_kh']['ST'][v]:>9.4f}"
+            )
+        log.info(f"\n  Sobol indices saved to: {sobol_path}")
+        log.info(
+            "  Interpretation: ST-S1 > 0.05 signals interaction — "
+            "marginal tables may underfit that variable."
+        )
+
+    if args.bucket:
+        stage_out(args.bucket, out, f"results/gcp_vm_multizone_calibrate_{datetime.now():%Y%m%d_%H%M%S}")
+    return 0
+
+
+# ── Mode: multizone-exhaustive ────────────────────────────────────────────────
+def mode_multizone_exhaustive(args, idf_path: Path, epw_path: Path) -> int:
+    log.warning("multizone-exhaustive is currently disabled due to the 12,288 run requirement.")
+    return 1
+
+
+# ── Mode: multizone-dw ────────────────────────────────────────────────────────
+def mode_multizone_dw(args, idf_path: Path, epw_path: Path) -> int:
+    """
+    DW + NA-IPM multizone optimization (Paper 2, §5.3).
+
+    Delegates Phase 1-3 to the documented Dantzig-Wolfe coordinator
+    (src/phase3/dantzig_wolfe_coordinator.py, PR #17):
+      - Loads LHS calibration samples → per-zone discomfort tables + marginal tables
+      - Runs Polyak-subgradient master loop with CP-SAT + Grossone zonal subproblems
+      - Returns optimal {setpoint, wall_r, roof_r} under coincident-capacity budget
+
+    Phase 4 — EnergyPlus: 1 full-building validation run → actual FR1 + FR2.
+
+    Output: tmp/energyplus_sim/multizone_dw/multizone_dw_result.json
+    """
+    log.info("=== MODE: multizone-dw (DW + NA-IPM, PR #17 coordinator) ===")
+
+    # ── Import coordinator ────────────────────────────────────────────────────
+    src_dir = Path(__file__).resolve().parent / "src" / "phase3"
+    sys.path.insert(0, str(src_dir))
+    try:
+        from dantzig_wolfe_coordinator import load_data_and_compile_tables, coordinate_dantzig_wolfe
+    except ImportError as e:
+        log.error(f"Cannot import coordinator: {e}. Check src/phase3/dantzig_wolfe_coordinator.py")
+        return 1
+
+    out = WORK_DIR / "multizone_dw"
+    out.mkdir(parents=True, exist_ok=True)
+
+    # ── Locate calibration samples ────────────────────────────────────────────
+    calibration_path = WORK_DIR / "multizone_calibrate" / "multizone_calibration_samples.json"
+    if not calibration_path.exists():
+        calibration_path = Path("/tmp/energyplus_sim/multizone_calibrate/multizone_calibration_samples.json")
+    if not calibration_path.exists():
+        log.error(
+            "Calibration samples not found. Run --mode multizone-calibrate first, "
+            "or place the file at: tmp/energyplus_sim/multizone_calibrate/multizone_calibration_samples.json"
+        )
+        return 1
+
+    log.info(f"  Calibration samples: {calibration_path}")
+
+    # ── Phase 1-3: Dantzig-Wolfe coordinator ─────────────────────────────────
+    try:
+        data, discomfort_tables, marginal_tables = load_data_and_compile_tables(calibration_path)
+    except Exception as e:
+        log.error(f"Failed to load calibration data: {e}")
+        return 1
+
+    lmax = getattr(args, "lmax", 17.5)
+    log.info(f"  Coincident capacity budget: {lmax} kW")
+
+    opt_sol, pi_hist, gap_hist = coordinate_dantzig_wolfe(
+        discomfort_tables, marginal_tables, lmax, max_iter=50
+    )
+
+    if not opt_sol:
+        log.error(
+            f"DW coordinator found no feasible solution under {lmax} kW budget. "
+            "Try raising --lmax."
+        )
+        return 1
+
+    # Extract design decision from coordinator output
+    import numpy as np
+    selected_setpoints = {z: opt_sol["zones"][z]["setpoint"] for z in OCCUPIED_ZONES}
+    selected_wall_r = float(np.mean([opt_sol["zones"][z]["wall_r"] for z in OCCUPIED_ZONES]))
+    selected_roof_r = float(np.mean([opt_sol["zones"][z]["roof_r"] for z in OCCUPIED_ZONES]))
+
+    log.info(
+        f"  Coordinator → setpoints={list(selected_setpoints.values())}, "
+        f"wall_r={selected_wall_r:.2f}, roof_r={selected_roof_r:.2f}, "
+        f"proxy comfort={opt_sol['total_comfort_deg_hours']:.1f} °C·h, "
+        f"pi={opt_sol['dual_price']:.2f}"
+    )
+
+    # ── Phase 4: EnergyPlus validation ────────────────────────────────────────
+    log.info("  EnergyPlus validation (1 run)…")
+    task = {
+        "key": "mzdw_val",
+        "idf_base": idf_path,
+        "epw_path": epw_path,
+        "output_dir": out,
+        "wall_r": selected_wall_r,
+        "roof_r": selected_roof_r,
+        "orientation": 0.0,
+        "setpoint": {z: float(v) for z, v in selected_setpoints.items()},
+        "candidate_id": "mzdw_val",
+        "quiet": args.quiet,
+        "return_zonal_comfort": True,
+        "comfort_threshold": 24.0,
+    }
+    batch = run_batch([task], 1, label="multizone-dw", log_every=1)
+    res = batch.get("mzdw_val")
+    if res is None:
+        log.error("EnergyPlus validation failed")
+        return 1
+
+    dc = res["discomfort_kh"]
+    actual_fr1 = float(sum(dc.values()) if isinstance(dc, dict) else dc)
+    actual_fr2 = float(res["hvac_kwh"])
+
+    log.info(f"\n  DW + NA-IPM result:")
+    log.info(f"    FR1 (discomfort): {actual_fr1:.2f} °C·h")
+    log.info(f"    FR2 (HVAC energy): {actual_fr2:.0f} kWh")
+    log.info(f"    EnergyPlus calls: 1")
+    log.info(f"    Coordinator iterations: {opt_sol['iteration'] + 1}")
+
+    result = {
+        "algorithm": "DW + NA-IPM",
+        "coordinator": "src/phase3/dantzig_wolfe_coordinator.py (PR #17)",
+        "coincident_capacity_budget_kw": lmax,
+        "coordinator_iterations": opt_sol["iteration"] + 1,
+        "optimal_dual_price_pi": opt_sol["dual_price"],
+        "selected_setpoints": selected_setpoints,
+        "selected_wall_r": round(selected_wall_r, 4),
+        "selected_roof_r": round(selected_roof_r, 4),
+        "proxy_comfort_deg_hours": round(opt_sol["total_comfort_deg_hours"], 2),
+        "proxy_peak_capacity_kw": round(opt_sol["peak_coincident_capacity_kw"], 2),
+        "fr1_kh": round(actual_fr1, 2),
+        "fr2_kwh": round(actual_fr2, 1),
+        "eplus_calls": 1,
+    }
+    result_path = out / "multizone_dw_result.json"
+    result_path.write_text(json.dumps(result, indent=2))
+    log.info(f"  Saved: {result_path}")
+    log.info(
+        f"\n  Add to Figure 4: "
+        f"--dw-fr1 {actual_fr1:.2f} --dw-fr2 {actual_fr2:.0f}"
+    )
+    return 0
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
-_BATCH_MODES = {"gsa", "pareto", "pareto-sequential", "exhaustive", "calibrate"}
+_BATCH_MODES = {"gsa", "pareto", "pareto-sequential", "exhaustive", "calibrate", "multizone-calibrate"}
 
 
 def _should_check_billing(args) -> bool:
@@ -1552,7 +1889,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["validate", "single", "gsa", "gsa-sobol", "pareto", "exhaustive", "calibrate", "pareto-sequential"],
+        choices=["validate", "single", "gsa", "gsa-sobol", "pareto", "exhaustive", "calibrate", "pareto-sequential", "multizone-calibrate", "multizone-exhaustive", "multizone-dw"],
         default="validate",
         help="Execution mode (default: validate)",
     )
@@ -1617,8 +1954,8 @@ def main() -> int:
         "--sampling",
         choices=["lhs", "saltelli"],
         default="lhs",
-        help="calibrate sampling strategy: lhs (default) or saltelli "
-             "(outputs Sobol S1/ST → sobol_indices.json)",
+        help="multizone-calibrate sampling strategy: lhs (default) or saltelli "
+             "(outputs Sobol S1/ST → multizone_sobol_indices.json)",
     )
 
     # gsa-sobol mode (M2)
@@ -1633,7 +1970,9 @@ def main() -> int:
         "--seed",
         type=int,
         default=42,
-        help="Random seed for Saltelli sampling (default: 42)",
+        help="Random seed for Saltelli/LHS sampling (gsa-sobol + "
+             "multizone-calibrate). Pinning this is required for reproducible "
+             "calibration JSONs and downstream DW results (default: 42).",
     )
     parser.add_argument(
         "--chunk-size",
@@ -1659,6 +1998,14 @@ def main() -> int:
         choices=["regression", "marginal"],
         default="regression",
         help="CP-SAT energy proxy (M3.3): regression (signed coefs) or marginal (tables)",
+    )
+
+    # multizone-dw mode
+    parser.add_argument(
+        "--lmax",
+        type=float,
+        default=17.5,
+        help="DW coordinator: coincident peak cooling capacity budget in kW (default: 17.5)",
     )
 
     # pareto-sequential mode (M3.8)
@@ -1714,7 +2061,10 @@ def main() -> int:
         # Local development — use files from data/ and skip all GCS Stage-Out
         args.bucket = None
         project_root = Path(__file__).resolve().parent
-        idf_local = project_root / "data" / "5ZoneAirCooled_Opt.idf"
+        if "multizone" in args.mode:
+            idf_local = project_root / "data" / "5ZoneAirCooled_MultiZone.idf"
+        else:
+            idf_local = project_root / "data" / "5ZoneAirCooled_Opt.idf"
         epw_local = (
             project_root / "data" / "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw"
         )
@@ -1723,7 +2073,16 @@ def main() -> int:
             return 1
     else:
         log.info("Stage-In: downloading inputs from GCS...")
+        # For multizone modes, use the MultiZone IDF unless the caller
+        # explicitly passed a different --idf path.
         idf_gcs = args.idf
+        if "multizone" in args.mode and args.idf == DEFAULT_IDF_GCS:
+            if BUILDING_MODEL == "medium_office":
+                idf_gcs = DEFAULT_MEDIUM_OFFICE_IDF_GCS
+                log.info(f"  Auto-selected Medium Office IDF: {idf_gcs}")
+            else:
+                idf_gcs = DEFAULT_MULTIZONE_IDF_GCS
+                log.info(f"  Auto-selected MultiZone IDF: {idf_gcs}")
         ok_idf = stage_in(args.bucket, idf_gcs, idf_local)
         ok_epw = stage_in(args.bucket, args.epw, epw_local)
         if not ok_idf or not ok_epw:
@@ -1740,6 +2099,9 @@ def main() -> int:
         "exhaustive": mode_exhaustive,
         "calibrate": mode_calibrate,
         "pareto-sequential": mode_pareto_sequential,
+        "multizone-calibrate": mode_multizone_calibrate,
+        "multizone-exhaustive": mode_multizone_exhaustive,
+        "multizone-dw": mode_multizone_dw,
     }
     rc = 1
     try:

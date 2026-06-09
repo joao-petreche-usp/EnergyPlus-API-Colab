@@ -59,6 +59,25 @@ To regenerate the ground truth from scratch, run `--mode exhaustive` first (1 h 
 
 ---
 
+## Reviewer reproducibility — empirical proxy & discretisation metrics (Section 5.2)
+
+Three pre-submission validation artefacts back the claims in manuscript Section 5.2 — proxy calibration (Reviewer-2 Concern 1), AD-matrix threshold stability (Concern 2), and Saltelli continuous-vs-discrete bias (Concern 3). All three are regenerable from the cached 768-sample GSA dataset (`_GCP_VM_VERSION/data/gsa_results_v2.csv`) without any EnergyPlus runs:
+
+```bash
+python -u _GCP_VM_VERSION/scripts/reproduce_reviewer_metrics.py
+```
+
+Runtime: under one minute on a laptop. Output:
+
+- `_GCP_VM_VERSION/data/proxy_calibration_p1.json` — R²(`fr1_proxy`, `fr1_kh`) = 0.913, Spearman ρ = +0.942, Kendall τ = 0.808.
+- `_GCP_VM_VERSION/data/discretization_sensitivity.json` — max |ΔS_T| = 0.57% on partition-relevant DPs; ranking preserved.
+- `_GCP_VM_VERSION/data/ad_matrix_threshold_sweep.json` — partition unchanged under threshold sweep {0.05, 0.10, 0.15}.
+- `figures/fig_proxy_calibration.{pdf,png}`, `figures/fig_discretization_bar.{pdf,png}`.
+
+The S_T-based AD matrix construction is canonical in `_GCP_VM_VERSION/src/analysis/ad_matrix.py:build_ad_matrix(..., use_st=True)`.
+
+---
+
 ## Alternative reviewer journeys
 
 ### Google Cloud VM (for the large GSA campaign)

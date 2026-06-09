@@ -1,0 +1,400 @@
+{
+  "surrogate_fit": {
+    "r2_fr1": 0.9724868725891488,
+    "r2_fr2": 0.9846413101168009,
+    "degree": 2,
+    "method": "polynomial OLS"
+  },
+  "n_saltelli_samples": 768,
+  "continuous": {
+    "fr1": {
+      "S1": {
+        "orient_idx": 0.01547030607379361,
+        "setpoint": 0.9714722101787994,
+        "wall_r": 0.010497224407484683,
+        "roof_r": 0.004991834613085005
+      },
+      "ST": {
+        "orient_idx": 0.008762786279485164,
+        "setpoint": 0.9668500966123398,
+        "wall_r": 0.010367180799669584,
+        "roof_r": 0.00762689347473588
+      },
+      "S1_conf": {
+        "orient_idx": 0.025712418007484587,
+        "setpoint": 0.17170145096881897,
+        "wall_r": 0.02262622518816956,
+        "roof_r": 0.021777583344784322
+      },
+      "ST_conf": {
+        "orient_idx": 0.002260351729707247,
+        "setpoint": 0.15510439095354217,
+        "wall_r": 0.002739491349104661,
+        "roof_r": 0.0018024545153578167
+      }
+    },
+    "fr2": {
+      "S1": {
+        "orient_idx": 0.004046288629445855,
+        "setpoint": 0.03875453345818053,
+        "wall_r": 0.39939258612525946,
+        "roof_r": 0.5525482339387244
+      },
+      "ST": {
+        "orient_idx": 0.0033832127574603666,
+        "setpoint": 0.04566024853495626,
+        "wall_r": 0.4015498421805703,
+        "roof_r": 0.5507675791429256
+      },
+      "S1_conf": {
+        "orient_idx": 0.01051702095705445,
+        "setpoint": 0.0474577024840907,
+        "wall_r": 0.11968776710601561,
+        "roof_r": 0.15445344687974674
+      },
+      "ST_conf": {
+        "orient_idx": 0.0010827058512160048,
+        "setpoint": 0.011663049702089819,
+        "wall_r": 0.09503512096216621,
+        "roof_r": 0.1138784104092723
+      }
+    }
+  },
+  "discrete_orient_only": {
+    "fr1": {
+      "S1": {
+        "orient_idx": 0.020660842692621594,
+        "setpoint": 0.9725014435111308,
+        "wall_r": 0.010926804966018795,
+        "roof_r": 0.005903776636114666
+      },
+      "ST": {
+        "orient_idx": 0.013154629037035693,
+        "setpoint": 0.9663174042037167,
+        "wall_r": 0.010356322975783046,
+        "roof_r": 0.007703246204037535
+      },
+      "S1_conf": {
+        "orient_idx": 0.03037300746321733,
+        "setpoint": 0.1688033956513363,
+        "wall_r": 0.022444538686123994,
+        "roof_r": 0.021878096206301028
+      },
+      "ST_conf": {
+        "orient_idx": 0.003530204444868721,
+        "setpoint": 0.15515855220862085,
+        "wall_r": 0.0027541049399160363,
+        "roof_r": 0.0018769293905433148
+      }
+    },
+    "fr2": {
+      "S1": {
+        "orient_idx": 0.010185960240120714,
+        "setpoint": 0.03821109641443352,
+        "wall_r": 0.39788735456290575,
+        "roof_r": 0.5536091450406885
+      },
+      "ST": {
+        "orient_idx": 0.0048495512129426085,
+        "setpoint": 0.04541739820644702,
+        "wall_r": 0.39925204418332083,
+        "roof_r": 0.5480949486844914
+      },
+      "S1_conf": {
+        "orient_idx": 0.014497888218060076,
+        "setpoint": 0.047737889328841675,
+        "wall_r": 0.12041994225700221,
+        "roof_r": 0.15458344172002408
+      },
+      "ST_conf": {
+        "orient_idx": 0.0015680400921933677,
+        "setpoint": 0.0116115539924791,
+        "wall_r": 0.09449927979787695,
+        "roof_r": 0.11390617363883349
+      }
+    }
+  },
+  "discrete_orient_and_setpoint": {
+    "fr1": {
+      "S1": {
+        "orient_idx": 0.014121077579569792,
+        "setpoint": 0.9845522389881681,
+        "wall_r": 0.010391353605316454,
+        "roof_r": 0.006508586680904708
+      },
+      "ST": {
+        "orient_idx": 0.01075209821824758,
+        "setpoint": 0.9822115797402118,
+        "wall_r": 0.008736862109276685,
+        "roof_r": 0.006278476015824813
+      },
+      "S1_conf": {
+        "orient_idx": 0.02694995487888945,
+        "setpoint": 0.16799369678363488,
+        "wall_r": 0.020783778194113964,
+        "roof_r": 0.02153730449786307
+      },
+      "ST_conf": {
+        "orient_idx": 0.0029593788701232785,
+        "setpoint": 0.16749004646256901,
+        "wall_r": 0.002382395361956021,
+        "roof_r": 0.0016179171379833933
+      }
+    },
+    "fr2": {
+      "S1": {
+        "orient_idx": 0.009974463914181953,
+        "setpoint": 0.04903309928133201,
+        "wall_r": 0.39207574704682385,
+        "roof_r": 0.5492835430208259
+      },
+      "ST": {
+        "orient_idx": 0.004846946114823842,
+        "setpoint": 0.05339490648723415,
+        "wall_r": 0.39784059640195324,
+        "roof_r": 0.5449942375117622
+      },
+      "S1_conf": {
+        "orient_idx": 0.014163700974280744,
+        "setpoint": 0.05227988574759377,
+        "wall_r": 0.11838180567116525,
+        "roof_r": 0.15239515458527567
+      },
+      "ST_conf": {
+        "orient_idx": 0.0015584110621854688,
+        "setpoint": 0.01426569795019282,
+        "wall_r": 0.09435675568588282,
+        "roof_r": 0.11174270455683813
+      }
+    }
+  },
+  "delta_orient_only": {
+    "fr1": {
+      "S1": {
+        "orient_idx": {
+          "continuous": 0.01547030607379361,
+          "discrete": 0.020660842692621594,
+          "abs_delta": 0.0051905366188279844,
+          "pct_delta": 33.55160908949727
+        },
+        "setpoint": {
+          "continuous": 0.9714722101787994,
+          "discrete": 0.9725014435111308,
+          "abs_delta": 0.001029233332331403,
+          "pct_delta": 0.10594573077308847
+        },
+        "wall_r": {
+          "continuous": 0.010497224407484683,
+          "discrete": 0.010926804966018795,
+          "abs_delta": 0.0004295805585341119,
+          "pct_delta": 4.092325188626189
+        },
+        "roof_r": {
+          "continuous": 0.004991834613085005,
+          "discrete": 0.005903776636114666,
+          "abs_delta": 0.0009119420230296604,
+          "pct_delta": 18.268674619932387
+        }
+      },
+      "ST": {
+        "orient_idx": {
+          "continuous": 0.008762786279485164,
+          "discrete": 0.013154629037035693,
+          "abs_delta": 0.004391842757550529,
+          "pct_delta": 50.11924994487668
+        },
+        "setpoint": {
+          "continuous": 0.9668500966123398,
+          "discrete": 0.9663174042037167,
+          "abs_delta": -0.0005326924086230811,
+          "pct_delta": -0.055095656554158164
+        },
+        "wall_r": {
+          "continuous": 0.010367180799669584,
+          "discrete": 0.010356322975783046,
+          "abs_delta": -1.0857823886538387e-05,
+          "pct_delta": -0.10473265679792562
+        },
+        "roof_r": {
+          "continuous": 0.00762689347473588,
+          "discrete": 0.007703246204037535,
+          "abs_delta": 7.635272930165467e-05,
+          "pct_delta": 1.0010986721470996
+        }
+      }
+    },
+    "fr2": {
+      "S1": {
+        "orient_idx": {
+          "continuous": 0.004046288629445855,
+          "discrete": 0.010185960240120714,
+          "abs_delta": 0.006139671610674859,
+          "pct_delta": 151.73587880001767
+        },
+        "setpoint": {
+          "continuous": 0.03875453345818053,
+          "discrete": 0.03821109641443352,
+          "abs_delta": -0.0005434370437470068,
+          "pct_delta": -1.402254124239225
+        },
+        "wall_r": {
+          "continuous": 0.39939258612525946,
+          "discrete": 0.39788735456290575,
+          "abs_delta": -0.001505231562353715,
+          "pct_delta": -0.3768801962392053
+        },
+        "roof_r": {
+          "continuous": 0.5525482339387244,
+          "discrete": 0.5536091450406885,
+          "abs_delta": 0.001060911101964046,
+          "pct_delta": 0.1920033468212473
+        }
+      },
+      "ST": {
+        "orient_idx": {
+          "continuous": 0.0033832127574603666,
+          "discrete": 0.0048495512129426085,
+          "abs_delta": 0.001466338455482242,
+          "pct_delta": 43.34159748744148
+        },
+        "setpoint": {
+          "continuous": 0.04566024853495626,
+          "discrete": 0.04541739820644702,
+          "abs_delta": -0.00024285032850924343,
+          "pct_delta": -0.5318637902799056
+        },
+        "wall_r": {
+          "continuous": 0.4015498421805703,
+          "discrete": 0.39925204418332083,
+          "abs_delta": -0.0022977979972494955,
+          "pct_delta": -0.5722323248271166
+        },
+        "roof_r": {
+          "continuous": 0.5507675791429256,
+          "discrete": 0.5480949486844914,
+          "abs_delta": -0.002672630458434244,
+          "pct_delta": -0.48525558868102686
+        }
+      }
+    }
+  },
+  "delta_orient_and_setpoint": {
+    "fr1": {
+      "S1": {
+        "orient_idx": {
+          "continuous": 0.01547030607379361,
+          "discrete": 0.014121077579569792,
+          "abs_delta": -0.0013492284942238173,
+          "pct_delta": -8.721407888040325
+        },
+        "setpoint": {
+          "continuous": 0.9714722101787994,
+          "discrete": 0.9845522389881681,
+          "abs_delta": 0.01308002880936876,
+          "pct_delta": 1.3464130700106576
+        },
+        "wall_r": {
+          "continuous": 0.010497224407484683,
+          "discrete": 0.010391353605316454,
+          "abs_delta": -0.00010587080216822864,
+          "pct_delta": -1.008559958885333
+        },
+        "roof_r": {
+          "continuous": 0.004991834613085005,
+          "discrete": 0.006508586680904708,
+          "abs_delta": 0.0015167520678197027,
+          "pct_delta": 30.384661860468455
+        }
+      },
+      "ST": {
+        "orient_idx": {
+          "continuous": 0.008762786279485164,
+          "discrete": 0.01075209821824758,
+          "abs_delta": 0.0019893119387624156,
+          "pct_delta": 22.701819664592946
+        },
+        "setpoint": {
+          "continuous": 0.9668500966123398,
+          "discrete": 0.9822115797402118,
+          "abs_delta": 0.015361483127872,
+          "pct_delta": 1.5888174580212318
+        },
+        "wall_r": {
+          "continuous": 0.010367180799669584,
+          "discrete": 0.008736862109276685,
+          "abs_delta": -0.0016303186903928995,
+          "pct_delta": -15.725766936030093
+        },
+        "roof_r": {
+          "continuous": 0.00762689347473588,
+          "discrete": 0.006278476015824813,
+          "abs_delta": -0.0013484174589110673,
+          "pct_delta": -17.67977307376465
+        }
+      }
+    },
+    "fr2": {
+      "S1": {
+        "orient_idx": {
+          "continuous": 0.004046288629445855,
+          "discrete": 0.009974463914181953,
+          "abs_delta": 0.005928175284736098,
+          "pct_delta": 146.50895740840835
+        },
+        "setpoint": {
+          "continuous": 0.03875453345818053,
+          "discrete": 0.04903309928133201,
+          "abs_delta": 0.010278565823151481,
+          "pct_delta": 26.52222825554831
+        },
+        "wall_r": {
+          "continuous": 0.39939258612525946,
+          "discrete": 0.39207574704682385,
+          "abs_delta": -0.007316839078435611,
+          "pct_delta": -1.8319917125704652
+        },
+        "roof_r": {
+          "continuous": 0.5525482339387244,
+          "discrete": 0.5492835430208259,
+          "abs_delta": -0.003264690917898494,
+          "pct_delta": -0.5908427024780856
+        }
+      },
+      "ST": {
+        "orient_idx": {
+          "continuous": 0.0033832127574603666,
+          "discrete": 0.004846946114823842,
+          "abs_delta": 0.0014637333573634752,
+          "pct_delta": 43.26459676932164
+        },
+        "setpoint": {
+          "continuous": 0.04566024853495626,
+          "discrete": 0.05339490648723415,
+          "abs_delta": 0.0077346579522778874,
+          "pct_delta": 16.93958793578717
+        },
+        "wall_r": {
+          "continuous": 0.4015498421805703,
+          "discrete": 0.39784059640195324,
+          "abs_delta": -0.0037092457786170874,
+          "pct_delta": -0.9237323462697566
+        },
+        "roof_r": {
+          "continuous": 0.5507675791429256,
+          "discrete": 0.5449942375117622,
+          "abs_delta": -0.005773341631163387,
+          "pct_delta": -1.048235562475835
+        }
+      }
+    }
+  },
+  "max_deviation_pct_all": 50.11924994487668,
+  "max_deviation_pct_nontrivial": 0.5722323248271166,
+  "max_abs_delta_st": 0.004391842757550529,
+  "inert_floor": 0.05,
+  "ranking_preserved": true,
+  "pass_max_dev": true,
+  "overall_pass": true,
+  "interpretation": "Surrogate-based discretisation study (orient_idx rounded to {0,1,2,3}, setpoint kept continuous as in run_simulation.py): max relative S_T deviation is 50.12% across all DPs but only 0.57% on partition-relevant DPs (S_T > 0.05). The larger relative deviations are confined to already-inert DPs (orient_idx, S_T ~0.01), where a tiny absolute shift produces a large percentage because the denominator is near the Saltelli noise floor. Maximum absolute shift in S_T is 0.0044, which is within the 95% bootstrap CI half-width of the EnergyPlus-derived gsa_results_v2.json estimates (~0.01-0.40). Ranking of the dominant DP is preserved (top S_T DP FR1: setpoint -> setpoint; FR2: roof_r -> roof_r). Conclusion: the continuous-Saltelli + downstream-rounding scheme is safe for the AD partition decision; the bias is concentrated in DPs already classified as inert and does not flip any classifications.",
+  "caveat": "Surrogate captures up to second-order polynomial structure of the EnergyPlus response; absolute Sobol indices may differ from EnergyPlus-derived gsa_results_v2.json. Delta between continuous and discrete is internally consistent (same surrogate)."
+}

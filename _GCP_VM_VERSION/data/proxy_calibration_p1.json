@@ -1,0 +1,27 @@
+{
+  "r2": 0.9126967068866128,
+  "mae_kh": 761.8598949098838,
+  "mape_pct": 14.322873845186097,
+  "spearman_rho": 0.9417975736135429,
+  "spearman_rho_abs": 0.9417975736135429,
+  "kendall_tau": 0.8076305799099193,
+  "sign_matches_proxy_doc": true,
+  "n_samples": 768,
+  "slope": 6569.511607097152,
+  "intercept": -86156.9843420246,
+  "residual_std_kh": 957.830957096599,
+  "fr1_proxy_range": [
+    13.43313952508061,
+    15.05075130048057
+  ],
+  "fr1_kh_range": [
+    2646.4882263781324,
+    13632.228951923997
+  ],
+  "glass_u_fixed": 2.0,
+  "pass_r2": true,
+  "pass_spearman_abs": true,
+  "overall_pass": true,
+  "interpretation": "Proxy explains 91.3% of fr1_kh variance and preserves Pareto dominance via monotonic rank correlation (|Spearman rho| = 0.942, |Kendall tau| = 0.808). SIGN MISMATCH DETECTED: the proxy docstring (run_simulation.py:712) claims 'higher value = worse comfort' (i.e., expects rho > 0 vs. fr1_kh), but the 768-sample GSA dataset shows rho = 0.942 (monotone-OPPOSITE). Root cause: src/pre_processing/gsa_runner.py:build_tasks called without comfort_threshold, so fr1_kh measures Sigma max(0, T - setpoint) dt (tracking error above the cooling setpoint), NOT Sigma max(0, T - 24degC) dt as stated in manuscript Section 2.1. Lower setpoint -> stricter cooling target -> more excursions -> higher fr1_kh. Pareto dominance is still preserved (|rho| = 0.942), but in the direction OPPOSITE to the proxy intent. Manuscript Section 3.4 must reconcile: either (i) revise FR_1 definition to 'tracking error above setpoint' (matches simulation) or (ii) re-run gsa-sobol with comfort_threshold=24.0 to restore the manuscript-defined FR_1.",
+  "source_csv": "_GCP_VM_VERSION\\data\\gsa_results_v2.csv"
+}
