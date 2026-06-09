@@ -30,6 +30,9 @@ def _detect_eplus_dir() -> str:
 
 EPLUS_DIR = _detect_eplus_dir()
 
+# Building model selector (5zone / medium_office) — used by multizone modes
+BUILDING_MODEL = os.environ.get("BUILDING_MODEL", "5zone")
+
 # Schedule:Compact name for setpoint actuator in IDF (legacy single-zone mode)
 CLG_SCHEDULE_NAME = os.environ.get("CLG_SCHEDULE_NAME", "Clg-SetP-Sch")
 
