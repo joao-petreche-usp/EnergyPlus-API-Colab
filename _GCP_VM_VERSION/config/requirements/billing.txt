@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────
+# billing.txt — optional: real cost queries via BigQuery billing export
+# Install:  pip install -r requirements/billing.txt
+# Or setup: bash _GCP_VM_VERSION/config/setup_gcp_env.sh --with-billing
+#
+# Used by _GCP_VM_VERSION/scripts/check_billing.py (BigQuery mode).
+# Not part of the minimal VM footprint — install only when real
+# (credited) cost figures are needed on the VM itself; without it,
+# check_billing.py falls back to gcloud SKU estimates.
+# ─────────────────────────────────────────────────────────────
+-r base.txt
+
+# BigQuery billing export query + DataFrame conversion
+google-cloud-bigquery>=3.10.0
+google-cloud-bigquery-storage
+db-dtypes

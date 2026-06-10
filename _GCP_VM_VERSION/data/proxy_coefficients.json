@@ -1,0 +1,37 @@
+{
+  "dp_order": [
+    "SPACE1-1",
+    "SPACE2-1",
+    "SPACE3-1",
+    "SPACE4-1",
+    "SPACE5-1",
+    "wall_r",
+    "roof_r"
+  ],
+  "coefficients_kwh": {
+    "SPACE1-1": -61.70966967651686,
+    "SPACE2-1": -94.31894335959328,
+    "SPACE3-1": -192.8878480455767,
+    "SPACE4-1": -59.96100020117772,
+    "SPACE5-1": -120.45698649382045,
+    "wall_r": -2599.979350545629,
+    "roof_r": -2078.8957077088307
+  },
+  "intercept_kwh": 87430.85161158492,
+  "coefficients_int": {
+    "SPACE1-1": -6171,
+    "SPACE2-1": -9432,
+    "SPACE3-1": -19289,
+    "SPACE4-1": -5996,
+    "SPACE5-1": -12046,
+    "wall_r": -259998,
+    "roof_r": -207890
+  },
+  "scale": 100,
+  "fit": {
+    "r2": 0.8807,
+    "mae_kwh": 778.5,
+    "heldout_mae_kwh": 772.41,
+    "n_samples": 492
+  }
+}

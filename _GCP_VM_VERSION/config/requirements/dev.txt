@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────
+# dev.txt — local development (Windows / VS Code)
+# Install locally: pip install -r requirements/dev.txt
+# DO NOT install on production VM (increases setup time)
+# ─────────────────────────────────────────────────────────────
+-r research.txt
+
+# Notebooks (local development)
+jupyter>=1.0.0
+pytest>=8.0.0
+
+# Designer decision explorer deps (plotly, ipykernel) — shared with design.txt
+-r design.txt
+
+# Google APIs — Gemini
+google-generativeai>=0.5.0
+
+# BigQuery billing deps for check_billing.py — shared with billing.txt
+-r billing.txt
+
+
+# Monitoring and APIs (future phase)
+fastapi>=0.110.0
+prometheus-client>=0.20.0
+uvicorn>=0.29.0

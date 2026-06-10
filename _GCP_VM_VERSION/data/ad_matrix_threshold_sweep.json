@@ -1,0 +1,126 @@
+{
+  "ad_matrix_canonical": {
+    "threshold": 0.05,
+    "use_st": true,
+    "dps": [
+      {
+        "dp": "orient_idx",
+        "s1_fr1": 0.0181,
+        "s1_fr2": 0.0166,
+        "st_fr1": 0.0139,
+        "st_fr2": 0.0135,
+        "dominant_fr": "fr1",
+        "coupled": false,
+        "decoupled": false,
+        "inert": true,
+        "delta_fr1": 0.0042,
+        "delta_fr2": 0.0031,
+        "delta_ci_sum_fr1": 0.0316,
+        "delta_ci_sum_fr2": 0.0352,
+        "near_additive_fr1": true,
+        "near_additive_fr2": true,
+        "near_additive": true,
+        "threshold_st_warning": false
+      },
+      {
+        "dp": "setpoint",
+        "s1_fr1": 0.8964,
+        "s1_fr2": 0.0338,
+        "st_fr1": 0.89,
+        "st_fr2": 0.041,
+        "dominant_fr": "fr1",
+        "coupled": false,
+        "decoupled": true,
+        "inert": false,
+        "delta_fr1": 0.0064,
+        "delta_fr2": 0.0072,
+        "delta_ci_sum_fr1": 0.3902,
+        "delta_ci_sum_fr2": 0.0616,
+        "near_additive_fr1": true,
+        "near_additive_fr2": true,
+        "near_additive": true,
+        "threshold_st_warning": false
+      },
+      {
+        "dp": "wall_r",
+        "s1_fr1": 0.0124,
+        "s1_fr2": 0.3921,
+        "st_fr1": 0.0104,
+        "st_fr2": 0.411,
+        "dominant_fr": "fr2",
+        "coupled": false,
+        "decoupled": true,
+        "inert": false,
+        "delta_fr1": 0.002,
+        "delta_fr2": 0.0189,
+        "delta_ci_sum_fr1": 0.0289,
+        "delta_ci_sum_fr2": 0.266,
+        "near_additive_fr1": true,
+        "near_additive_fr2": true,
+        "near_additive": true,
+        "threshold_st_warning": false
+      },
+      {
+        "dp": "roof_r",
+        "s1_fr1": 0.007,
+        "s1_fr2": 0.5196,
+        "st_fr1": 0.0066,
+        "st_fr2": 0.5252,
+        "dominant_fr": "fr2",
+        "coupled": false,
+        "decoupled": true,
+        "inert": false,
+        "delta_fr1": 0.0004,
+        "delta_fr2": 0.0056,
+        "delta_ci_sum_fr1": 0.0185,
+        "delta_ci_sum_fr2": 0.3661,
+        "near_additive_fr1": true,
+        "near_additive_fr2": true,
+        "near_additive": true,
+        "threshold_st_warning": false
+      }
+    ],
+    "summary": {
+      "n_coupled": 0,
+      "n_decoupled": 3,
+      "n_inert": 1,
+      "all_near_additive": true
+    },
+    "markdown_table": "<!-- AD matrix \u2014 S_T threshold = 0.05, near-additive via 95% CI overlap -->\n| DP | S1 FR1 | ST FR1 | S1 FR2 | ST FR2 | |ST-S1| FR1 | |ST-S1| FR2 | CI sum FR1 | CI sum FR2 | Near-additive | Dominant | Status |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n| orient_idx | 0.0181 | 0.0139 | 0.0166 | 0.0135 | 0.0042 | 0.0031 | 0.0316 | 0.0352 | yes | fr1 | inert |\n| setpoint | 0.8964 | 0.8900 | 0.0338 | 0.0410 | 0.0064 | 0.0072 | 0.3902 | 0.0616 | yes | fr1 | decoupled |\n| wall_r | 0.0124 | 0.0104 | 0.3921 | 0.4110 | 0.0020 | 0.0189 | 0.0289 | 0.2660 | yes | fr2 | decoupled |\n| roof_r | 0.0070 | 0.0066 | 0.5196 | 0.5252 | 0.0004 | 0.0056 | 0.0185 | 0.3661 | yes | fr2 | decoupled |"
+  },
+  "threshold_sweep": {
+    "0.05": {
+      "coupled": [],
+      "decoupled": [
+        "setpoint",
+        "wall_r",
+        "roof_r"
+      ],
+      "inert": [
+        "orient_idx"
+      ]
+    },
+    "0.10": {
+      "coupled": [],
+      "decoupled": [
+        "setpoint",
+        "wall_r",
+        "roof_r"
+      ],
+      "inert": [
+        "orient_idx"
+      ]
+    },
+    "0.15": {
+      "coupled": [],
+      "decoupled": [
+        "setpoint",
+        "wall_r",
+        "roof_r"
+      ],
+      "inert": [
+        "orient_idx"
+      ]
+    }
+  }
+}

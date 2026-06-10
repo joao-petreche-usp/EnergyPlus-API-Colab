@@ -1,0 +1,99 @@
+# .gitignore
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+.venv-test
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# EnergyPlus Outputs
+eplusout.*
+eplustbl.htm
+*.audit
+*.bnd
+*.dxf
+*.err
+*.eso
+*.mdd
+*.mtd
+*.mtr
+*.rdd
+*.shd
+*.csv
+*.tab
+*.txt
+!requirements.txt
+!**/requirements/*.txt
+!**/requirements/base.txt
+!**/requirements/research.txt
+!**/requirements/dev.txt
+temp_sim/
+temp_sim_opt/
+output/
+*.sql
+*.sqlite
+*.log
+*.epw
+*.idf
+eplus*.json
+
+# Local-only documentation (not for public repo)
+local-docs/
+
+# IDE specific files
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Development & AI tooling — local-only, not part of the reproducibility companion ──
+# These stay on the maintainer's machine but are kept out of the public repo.
+.claude/
+.agents/
+.vscode/
+.mcp.json
+/CLAUDE.md
+GEMINI.md
+/plan/
+/setup/
+/__ARCHIVE/
+.github/copilot-instructions.md
+.github/docs/
+.github/scripts/
+.github/checks_output.txt
+_GCP_VM_VERSION/docs/Cloud_Code_Extension_Guide.md
+_GCP_VM_VERSION/docs/Gemini_Integration_Guide.md
+_GCP_VM_VERSION/docs/MCP_Extension_Architecture.md
+_GCP_VM_VERSION/docs/MCP_Extension_Setup.md

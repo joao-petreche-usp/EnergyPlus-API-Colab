@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────
+# design.txt — optional: designer-facing post-result exploration
+# Install:  pip install -r requirements/design.txt
+# Or setup: bash _GCP_VM_VERSION/config/setup_gcp_env.sh --with-design
+#
+# Used by _GCP_VM_VERSION/Designer_Decision_Explorer.ipynb (the /design
+# process) and to render dashboard.py figures inline in Jupyter.
+# Not part of the minimal VM footprint — install only when the designer
+# decision explorer notebook is run on the VM.
+# ─────────────────────────────────────────────────────────────
+-r base.txt
+
+# Inline Plotly figures (Dash server not required for notebook rendering)
+plotly>=5.0
+# Jupyter kernel for the VM venv
+ipykernel>=6.0
+# Required by Plotly to render figures inline in notebooks (pio mime renderer)
+nbformat>=5.0

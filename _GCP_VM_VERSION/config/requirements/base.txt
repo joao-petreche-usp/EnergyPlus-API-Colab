@@ -1,0 +1,12 @@
+# ─────────────────────────────────────────────────────────────
+# base.txt — minimum to run EnergyPlus simulation on GCP VM
+# ─────────────────────────────────────────────────────────────
+# Note: pyenergyplus is installed alongside the binary EnergyPlus
+# (in /eplus or ~/eplus) — DO NOT install via pip.
+
+# GCS Stage-In / Stage-Out
+google-cloud-storage>=2.10.0
+
+# Data and basic analysis
+numpy>=1.24.0
+pandas>=2.0.0
